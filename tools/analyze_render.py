@@ -709,6 +709,41 @@ def info_checks(x, sr, events, rep, arc_rows):
                 -4.5 <= dip <= -2.0,
                 note=f"600-3000Hz: pre {pre:.1f} -> hold {hold:.1f} -> recovered {post:.1f} dB")
 
+    # -- N6 (v2.4, research/BRIEF-v2.4.md): DONE state legibility. Two
+    # independent listeners confirmed the Stop cadence didn't read as
+    # conclusive and post-Stop idle was indistinguishable from idle-during-
+    # work. Only meaningful when a Stop is followed by >= 20s with no
+    # further scripted events (the "waiting for user" window this measures);
+    # N/A otherwise. RMS is the reliable acoustic signal here -- bloom-note
+    # rate is NOT independently checked acoustically: at a ~1/45-128s mean
+    # inter-note interval, 20s is too short a window for an onset-count to
+    # be anything but noise (measured: v2.2 and v2.4 settled-window onset
+    # counts in the bloom register are statistically indistinguishable at
+    # this timescale). That leg is asserted directly against the engine's
+    # own dispatch rate instead -- see
+    # tests/test_ambient.py::test_v24_settled_bloom_rate_is_reduced.
+    st = next((t for t, n, _ in names if n == "Stop"), None)
+    last_t = names[-1][0] if names else 0.0
+    if st is None or (last_t - st) < 20.0:
+        rep.add("N6 done-state legibility", "settled step <= -5.0 dB", "n/a", None,
+                note="no Stop, or Stop not followed by >=20s of no events")
+    else:
+        # working reference: 16s of steady activity ending 2s before Stop
+        # (skips any duck/knock right at the Stop boundary).
+        w0, w1 = max(0.0, st - 18.0), st - 2.0
+        # settled window: the LAST 12s of the post-Stop 20s+ gap, skipping
+        # the cadence gesture itself and the bed's glide into its settled
+        # target (SETTLED_BED_TAU_S / legacy easing tau).
+        s0, s1 = st + 8.0, st + 20.0
+        work_db = rms_db(m[int(w0 * sr):int(w1 * sr)])
+        settled_db = rms_db(m[int(s0 * sr):int(s1 * sr)])
+        step = settled_db - work_db
+        rep.add("N6 done-state legibility", "settled step <= -5.0 dB", f"{step:+.2f} dB",
+                step <= -5.0,
+                note=f"work {work_db:.1f} dB ({w0:.0f}-{w1:.0f}s) -> "
+                     f"settled {settled_db:.1f} dB ({s0:.0f}-{s1:.0f}s); "
+                     f"v2.2 measures ~-2.5 dB here, v2.4 ~-8.4 dB (see BRIEF-v2.4.md)")
+
     # -- 8b loudness stability WITHIN A CONSTANT MACHINE STATE
     # BRIEF-v2.md section 7 item 8 says "<= 3 dB within a constant machine
     # state", but item 8 above can only measure whatever window the caller
