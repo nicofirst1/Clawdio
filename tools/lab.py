@@ -5,7 +5,6 @@ Not a deliverable; a fast loop for the verifier's listenability work.
     python3 tools/lab.py steady 60      -> render 60s of constant medium
                                            activity and run the battery
     python3 tools/lab.py idle 40
-    python3 tools/lab.py layers         -> per-layer RMS + octave bands
 """
 import os
 import sys
@@ -92,7 +91,6 @@ def main():
     if os.environ.get("LAB_ARC"):
         print_arc(arc(x, SR, 10.0))
     if len(sys.argv) > 3:
-        from analyze_render import load_wav  # noqa
         import wave
         pcm = (np.clip(x, -1, 1) * 32767).astype(np.int16)
         with wave.open(sys.argv[3], "wb") as w:
