@@ -1706,67 +1706,91 @@ def _db_to_lin(db):
 
 class StemLayer:
     """L4 subagent "stem" pads: shimmer-pad + low-fifth-drone voices that
-    fade in/out with subagent presence (brief section 5). Holds a back-
-    reference to the parent AmbientTheme (`theme`) rather than owning its
-    state independently -- several fields here (stem1_gain/stem2_gain/
-    stem_phase/stem_pan) are also read directly by AmbientTheme.handle_event
-    (SubagentStart/SubagentStop) and by tests, and _apply_lp_stage's filter
-    state (_lp_zi) is shared with BedLayer/the master bus, so splitting
-    ownership for real would mean duplicating or proxying that shared state
-    rather than removing coupling."""
+    fade in/out with subagent presence (brief section 5). Owns its own gain/
+    phase/pan state. apply_lp_stage is a callback into AmbientTheme's shared
+    _lp_zi filter-state dict (also used by BedLayer and the master bus) --
+    a genuinely shared resource, passed in rather than duplicated."""
 
-    def __init__(self, theme):
-        self.theme = theme
+    def __init__(self, rng, apply_lp_stage, sr):
+        self.apply_lp_stage = apply_lp_stage
+        self.sr = sr
+        self.subagent_refcount = 0
+        self.stem1_gain = Slew(0.0, tau=1.7)   # ~5s equal-power-ish fade-in
+        self.stem2_gain = Slew(0.0, tau=1.7)
+        self.stem_phase = rng.random(2)
+        self.stem_pan = 0.3
+        self._stem_pan_toggle = False
 
     def render(self, dry, n, dt):
-        theme = self.theme
-        theme.stem1_gain.step(dt)
-        theme.stem2_gain.step(dt)
-        if theme.stem1_gain.value < 1e-4 and theme.stem2_gain.value < 1e-4:
+        self.stem1_gain.step(dt)
+        self.stem2_gain.step(dt)
+        if self.stem1_gain.value < 1e-4 and self.stem2_gain.value < 1e-4:
             return
-        t = np.arange(n) / theme.sr
-        if theme.stem1_gain.value > 1e-4:
+        t = np.arange(n) / self.sr
+        if self.stem1_gain.value > 1e-4:
             # 3-voice detuned saw ("supersaw an octave above bed") through the
             # same kind of 2-pole lowpass the L1 pad uses. The v2 builder's
             # single NAIVE saw with no filter at all put a 32 dB spectral
             # spike at 9.4 kHz (harmonic 36 of C4) into an otherwise -4 dB/oct
             # mix -- audibly buzzy, and a section 7 item 5 failure whenever a
             # subagent was running.
-            ph0 = theme.stem_phase[0]
+            ph0 = self.stem_phase[0]
             freqs = ROOT_C4 * (2.0 ** (STEM_DETUNE_CENTS / 1200.0))
             frac = np.mod(ph0 + t[:, None] * freqs[None, :], 1.0)
             saw = np.sum(2.0 * frac - 1.0, axis=1) / len(freqs)
-            theme.stem_phase[0] = float(np.mod(ph0 + ROOT_C4 * n / theme.sr, 1.0))
-            saw = theme._apply_lp_stage(saw, "stem1_lp1", STEM_LP_HZ)
-            saw = theme._apply_lp_stage(saw, "stem1_lp2", STEM_LP_HZ)
-            gain = _db_to_lin(-32.0 + STEM_CAL_DB) * theme.stem1_gain.value
-            pan = theme.stem_pan
+            self.stem_phase[0] = float(np.mod(ph0 + ROOT_C4 * n / self.sr, 1.0))
+            saw = self.apply_lp_stage(saw, "stem1_lp1", STEM_LP_HZ)
+            saw = self.apply_lp_stage(saw, "stem1_lp2", STEM_LP_HZ)
+            gain = _db_to_lin(-32.0 + STEM_CAL_DB) * self.stem1_gain.value
+            pan = self.stem_pan
             stereo = _mono_to_stereo(saw.astype(np.float64), pan=pan)
             dry += stereo * gain
-        if theme.stem2_gain.value > 1e-4:
-            ph0 = theme.stem_phase[1]
+        if self.stem2_gain.value > 1e-4:
+            ph0 = self.stem_phase[1]
             phase = ph0 + ROOT_G2 * t / 1.0
             sig = np.sin(2 * np.pi * phase)
-            theme.stem_phase[1] = float(np.mod(ph0 + ROOT_G2 * n / theme.sr, 1.0))
-            gain = _db_to_lin(-34.0 + STEM_CAL_DB) * theme.stem2_gain.value
-            stereo = _mono_to_stereo(sig.astype(np.float64), pan=-theme.stem_pan)
+            self.stem_phase[1] = float(np.mod(ph0 + ROOT_G2 * n / self.sr, 1.0))
+            gain = _db_to_lin(-34.0 + STEM_CAL_DB) * self.stem2_gain.value
+            stereo = _mono_to_stereo(sig.astype(np.float64), pan=-self.stem_pan)
             dry += stereo * gain
+
+    # -- handle_event handlers (called from AmbientTheme.handle_event) ------
+
+    def handle_subagent_start(self):
+        self.subagent_refcount += 1
+        self._stem_pan_toggle = not self._stem_pan_toggle
+        self.stem_pan = 0.3 if self._stem_pan_toggle else -0.3
+        self.stem1_gain.tau = 1.7
+        self.stem1_gain.target = 1.0
+        if self.subagent_refcount >= 2:
+            self.stem2_gain.tau = 1.7
+            self.stem2_gain.target = 1.0
+
+    def handle_subagent_stop(self):
+        self.subagent_refcount = max(0, self.subagent_refcount - 1)
+        if self.subagent_refcount < 1:
+            self.stem1_gain.tau = 2.7
+            self.stem1_gain.target = 0.0
+        if self.subagent_refcount < 2:
+            self.stem2_gain.tau = 2.7
+            self.stem2_gain.target = 0.0
 
 
 class WeatherLayer:
-    """L5 context-pressure sub-bass drone (brief section 8). Holds a back-
-    reference to the parent AmbientTheme -- fill_smooth/fail_penalty_slew
-    (which this layer's target level depends on) are driven by the shared
-    master-lowpass update (AmbientTheme._update_master_lowpass), a mix-bus
-    concern that also touches non-weather buses (send/air), so it stays on
-    AmbientTheme rather than being duplicated here."""
+    """L5 context-pressure sub-bass drone (brief section 8). Owns its own
+    phase/gain state; fill_smooth/fail_penalty_slew (which this layer's
+    target level depends on) are driven by the shared master-lowpass update
+    (AmbientTheme._update_master_lowpass, a mix-bus concern that also
+    touches non-weather buses), so those stay on AmbientTheme and this
+    layer's fill_smooth value is passed in at render time."""
 
-    def __init__(self, theme):
-        self.theme = theme
+    def __init__(self, sr):
+        self.sr = sr
+        self.subbass_phase = 0.0
+        self.subbass_gain = Slew(-80.0, tau=0.5)
 
-    def render(self, n, dt):
-        theme = self.theme
-        f = theme.fill_smooth.value
+    def render(self, n, dt, fill_smooth_value):
+        f = fill_smooth_value
         target_db = -80.0
         if f > 0.5:
             # frac**0.7 rather than frac: with a linear ramp the drone is
@@ -1780,15 +1804,15 @@ class WeatherLayer:
             # became audible in the last few percent of fill -- i.e. never,
             # for the fill values a real session actually sits at.
             target_db = -55.0 + frac * (-30.0 - (-55.0))
-        theme.subbass_gain.target = target_db
-        theme.subbass_gain.step(dt)
-        if theme.subbass_gain.value < -70.0:
+        self.subbass_gain.target = target_db
+        self.subbass_gain.step(dt)
+        if self.subbass_gain.value < -70.0:
             return np.zeros((n, 2))
-        t = np.arange(n) / theme.sr
-        phase = theme.subbass_phase + ROOT_C1 * t / 1.0
+        t = np.arange(n) / self.sr
+        phase = self.subbass_phase + ROOT_C1 * t / 1.0
         sig = np.sin(2 * np.pi * phase) + 0.3 * np.sin(4 * np.pi * phase)
-        theme.subbass_phase = float(np.mod(theme.subbass_phase + ROOT_C1 * n / theme.sr, 1.0))
-        gain = _db_to_lin(theme.subbass_gain.value + SUBBASS_CAL_DB)
+        self.subbass_phase = float(np.mod(self.subbass_phase + ROOT_C1 * n / self.sr, 1.0))
+        gain = _db_to_lin(self.subbass_gain.value + SUBBASS_CAL_DB)
         out = np.zeros((n, 2))
         out[:, 0] = sig * gain
         out[:, 1] = sig * gain
@@ -1797,29 +1821,74 @@ class WeatherLayer:
 
 class BedLayer:
     """L1 bed pad: supersaw + additive shimmer + v2.2 C3/G3 mid-register
-    warmth layer (brief section 2). Holds a back-reference to the parent
-    AmbientTheme -- draws from the SHARED render-thread RNG (theme._rng, in
-    the same call-order position render_block always called _render_bed
-    from) and its bed_level_db/bed_root_ratio are read by RainLayer's air
-    sub-layer and by note-spawning's embedding-cap calc, so this stays a
-    reach-back rather than independent ownership."""
+    warmth layer (brief section 2). Owns the bed's own state (level, root
+    shading, sus2/sus4 recoloring, failure-shading flags) and draws from the
+    render-thread RNG passed in at construction (shared with the other
+    continuous layers, same call-order position render_block always called
+    the bed render from). bed_level_db/bed_root_ratio are read by
+    AmbientTheme (note/knock embedding-cap calc) and by RainLayer's air
+    sub-layer (bed_level_db only) -- legitimate cross-layer READS of this
+    layer's own public state, not a back-reference out of it."""
 
-    def __init__(self, theme):
-        self.theme = theme
+    def __init__(self, rng, apply_lp_stage, sr):
+        self._rng = rng
+        self._apply_lp_stage = apply_lp_stage
+        self.sr = sr
 
-    def _bed_target_db(self):
-        theme = self.theme
+        self.bed_phase = np.zeros((2, 2, SUPERSAW_VOICES))  # [bed(C2/C3), ch(L/R), voice]
+        self.bed_phase[:] = rng.random(self.bed_phase.shape)
+        self.bed_lr_cents = np.array([-1.0, 1.0])
+        # Precomputed (28,) voice frequencies and the (28,2) mixdown matrix so
+        # the whole supersaw is one matmul per block (see render).
+        freqs = np.zeros((2, 2, SUPERSAW_VOICES))
+        mix = np.zeros((2, 2, SUPERSAW_VOICES, 2))
+        for bed_i, f0 in enumerate((ROOT_C2, ROOT_C3)):
+            bed_gain = 1.0 if bed_i == 0 else 0.35
+            for ch in range(2):
+                for v in range(SUPERSAW_VOICES):
+                    cents = SUPERSAW_CENTS[v] + self.bed_lr_cents[ch]
+                    freqs[bed_i, ch, v] = f0 * (2.0 ** (cents / 1200.0))
+                    mix[bed_i, ch, v, ch] = SUPERSAW_AMPS[v] * bed_gain / SUPERSAW_VOICES
+        self._bed_freqs = freqs.reshape(-1)
+        self._bed_mix = mix.reshape(-1, 2)
+        self.bed_cutoff_oct = 0.0
+        self.bed_gain_db = 0.0
+        self.shimmer_phase = rng.random((len(SHIMMER_HARMONICS), 2))
+        self.shimmer_amp_x = np.zeros(len(SHIMMER_HARMONICS))  # OU state, multiplicative +-30%
+        self.bed_level_db = Slew(-80.0, tau=1.5)
+        self.bed_root_ratio = Slew(1.0, tau=3.0)   # I <-> vi shading
+        self.sus2_amt = Slew(0.0, tau=1.2)         # Notification recoloring
+        self.sus4_amt = Slew(0.0, tau=4.0)         # fill > 0.85 recoloring
+        self.holding_breath_until = None
+        self.easing_after_stop_until = None
+        self.sus2_until = None
+        # v2.2 brightness-lift mid layer (C3+G3): two independent OU amplitude
+        # walks, same tambura-shimmer treatment as the low additive layer, but
+        # its own state so it can be gated/leveled independently.
+        # sized from MIDLAYER_FREQS, not a hard-coded 2: a 3-voice mid layer
+        # used to render as SILENCE (shape mismatch -> exception -> the
+        # render_block fault handler zeroes the block) instead of erroring.
+        self.midlayer_phase = rng.random((len(MIDLAYER_FREQS), 2))
+        self.midlayer_amp_x = np.zeros(len(MIDLAYER_FREQS))
+
+        # PostToolUseFailure shading: bass_shaded_vi/failed_tool are read
+        # only here (bed_root_ratio's I->vi shade target); handle_event sets
+        # them via handle_failure/handle_recovery/handle_stop below.
+        self.bass_shaded_vi = False
+        self.failed_tool = None
+
+    def _bed_target_db(self, t, last_event_t, session_start_t):
         # v2.2 section 2 "bed presence = the control anchor": listener
         # evidence was "dark cave"/"isolated"/"lost" -- a bed that all but
         # disappears at idle reads as a void, not a machine quietly running.
         # Active target raised so the bed is clearly audible under
         # everything; idle raised too so it stays present on earphones.
-        if theme.holding_breath_until is not None and theme.t < theme.holding_breath_until:
+        if self.holding_breath_until is not None and t < self.holding_breath_until:
             return -33.0, 2.0
-        if theme.easing_after_stop_until is not None and theme.t < theme.easing_after_stop_until:
+        if self.easing_after_stop_until is not None and t < self.easing_after_stop_until:
             return -33.0, 5.0
-        since_start = theme.t - (theme.session_start_t or 0.0)
-        idle_dur = theme.t - theme.last_event_t
+        since_start = t - (session_start_t or 0.0)
+        idle_dur = t - last_event_t
         if since_start < 3.0:
             return -30.0, 1.0
         if idle_dur < 90.0:
@@ -1829,50 +1898,50 @@ class BedLayer:
         else:
             return -40.0, 15.0
 
-    def render(self, dry, n, dt):
-        theme = self.theme
-        sr = theme.sr
-        theme.bed_cutoff_oct = _ou_step(theme.bed_cutoff_oct, 0.0, BED_OU_TAU, BED_CUTOFF_OU_SIGMA_OCT, dt, theme._rng)
-        theme.bed_gain_db = _ou_step(theme.bed_gain_db, 0.0, BED_OU_TAU, BED_GAIN_OU_SIGMA_DB, dt, theme._rng)
+    def render(self, dry, n, dt, t, last_event_t, session_start_t, fill_smooth_value):
+        sr = self.sr
+        rng = self._rng
+        self.bed_cutoff_oct = _ou_step(self.bed_cutoff_oct, 0.0, BED_OU_TAU, BED_CUTOFF_OU_SIGMA_OCT, dt, rng)
+        self.bed_gain_db = _ou_step(self.bed_gain_db, 0.0, BED_OU_TAU, BED_GAIN_OU_SIGMA_DB, dt, rng)
         for k in range(len(SHIMMER_HARMONICS)):
-            theme.shimmer_amp_x[k] = _ou_step(theme.shimmer_amp_x[k], 0.0, SHIMMER_OU_TAU, SHIMMER_OU_SIGMA, dt, theme._rng)
+            self.shimmer_amp_x[k] = _ou_step(self.shimmer_amp_x[k], 0.0, SHIMMER_OU_TAU, SHIMMER_OU_SIGMA, dt, rng)
 
-        target_db, tau = self._bed_target_db()
-        theme.bed_level_db.target = target_db
-        theme.bed_level_db.tau = tau
-        theme.bed_level_db.step(dt)
+        target_db, tau = self._bed_target_db(t, last_event_t, session_start_t)
+        self.bed_level_db.target = target_db
+        self.bed_level_db.tau = tau
+        self.bed_level_db.step(dt)
 
-        t = np.arange(n) / sr
-        cutoff = max(150.0, min(BED_LP_MAX_HZ, BED_LP_BASE_HZ * (2.0 ** theme.bed_cutoff_oct)))
+        tv = np.arange(n) / sr
+        cutoff = max(150.0, min(BED_LP_MAX_HZ, BED_LP_BASE_HZ * (2.0 ** self.bed_cutoff_oct)))
 
         # Root shading: PostToolUseFailure pulls the bed root C -> A (I -> vi,
         # BRIEF section 3 "the room got darker"), released on Stop / on the
         # first successful tool use after the failure. Glided (Slew tau 3s) so
         # it reads as a slow recoloring, never as a pitch bend.
-        theme.bed_root_ratio.target = _VI_RATIO if theme.bass_shaded_vi else 1.0
-        theme.bed_root_ratio.step(dt)
-        root_mult = theme.bed_root_ratio.value
+        self.bed_root_ratio.target = _VI_RATIO if self.bass_shaded_vi else 1.0
+        self.bed_root_ratio.step(dt)
+        root_mult = self.bed_root_ratio.value
 
         # Vectorized supersaw: all 2 beds x 2 channels x 7 voices in one
         # (n, 28) phase matrix + a single (28, 2) mixdown matmul. The
         # per-voice python loop this replaces was ~0.5ms/block.
-        freqs = theme._bed_freqs * root_mult                    # (28,)
-        ph = theme.bed_phase.reshape(-1)                        # (28,)
-        frac = np.mod(ph[None, :] + t[:, None] * freqs[None, :], 1.0)
-        stereo_saw = (2.0 * frac - 1.0) @ theme._bed_mix        # (n, 2)
-        theme.bed_phase = np.mod(ph + freqs * n / sr, 1.0).reshape(theme.bed_phase.shape)
+        freqs = self._bed_freqs * root_mult                    # (28,)
+        ph = self.bed_phase.reshape(-1)                        # (28,)
+        frac = np.mod(ph[None, :] + tv[:, None] * freqs[None, :], 1.0)
+        stereo_saw = (2.0 * frac - 1.0) @ self._bed_mix        # (n, 2)
+        self.bed_phase = np.mod(ph + freqs * n / sr, 1.0).reshape(self.bed_phase.shape)
 
         # Additive shimmer (tambura-style overtone walk). sus4 recoloring
         # above fill 0.85 swaps the 3rd-harmonic G for a slightly flatter
         # partial -- see _shimmer_ratios().
-        harm, gate = self._shimmer_ratios(dt)
+        harm, gate = self._shimmer_ratios(dt, fill_smooth_value, t)
         amp = (1.0 / (harm * harm)) * gate * (
-            1.0 + 0.9 * np.clip(theme.shimmer_amp_x, -1.0, 1.0))
+            1.0 + 0.9 * np.clip(self.shimmer_amp_x, -1.0, 1.0))
         sfreq = harm * ROOT_C2 * root_mult
-        sph = theme.shimmer_phase                               # (K,2)
-        phase = sph[None, :, :] + t[:, None, None] * sfreq[None, :, None]
+        sph = self.shimmer_phase                               # (K,2)
+        phase = sph[None, :, :] + tv[:, None, None] * sfreq[None, :, None]
         shimmer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * phase), amp * 0.5)
-        theme.shimmer_phase = np.mod(sph + (sfreq * n / sr)[:, None], 1.0)
+        self.shimmer_phase = np.mod(sph + (sfreq * n / sr)[:, None], 1.0)
 
         bed_raw = stereo_saw * 0.6 + shimmer * 0.4
 
@@ -1880,11 +1949,11 @@ class BedLayer:
         for ch in range(2):
             key1, key2 = f"bed_lp1_{ch}", f"bed_lp2_{ch}"
             col = bed_raw[:, ch]
-            col = theme._apply_lp_stage(col, key1, cutoff)
-            col = theme._apply_lp_stage(col, key2, cutoff)
+            col = self._apply_lp_stage(col, key1, cutoff)
+            col = self._apply_lp_stage(col, key2, cutoff)
             bed_raw[:, ch] = col
 
-        gain = _db_to_lin(theme.bed_level_db.value + theme.bed_gain_db + BED_CAL_DB)
+        gain = _db_to_lin(self.bed_level_db.value + self.bed_gain_db + BED_CAL_DB)
         dry += bed_raw * gain
 
         # v2.2 brightness lift (section 2): a soft, independent C3+G3 mid
@@ -1894,62 +1963,126 @@ class BedLayer:
         # its own gain trim (MIDLAYER_CAL_DB) and OU walk so it doesn't
         # disturb the already-balanced low pad/shimmer stack.
         for k in range(len(MIDLAYER_FREQS)):
-            theme.midlayer_amp_x[k] = _ou_step(
-                theme.midlayer_amp_x[k], 0.0, MIDLAYER_OU_TAU, MIDLAYER_OU_SIGMA, dt, theme._rng)
+            self.midlayer_amp_x[k] = _ou_step(
+                self.midlayer_amp_x[k], 0.0, MIDLAYER_OU_TAU, MIDLAYER_OU_SIGMA, dt, rng)
         mid_freqs = MIDLAYER_FREQS * root_mult
-        mid_amp = 1.0 + 0.9 * np.clip(theme.midlayer_amp_x, -1.0, 1.0)
-        mph = theme.midlayer_phase                              # (K,2)
-        mphase = mph[None, :, :] + t[:, None, None] * mid_freqs[None, :, None]
+        mid_amp = 1.0 + 0.9 * np.clip(self.midlayer_amp_x, -1.0, 1.0)
+        mph = self.midlayer_phase                              # (K,2)
+        mphase = mph[None, :, :] + tv[:, None, None] * mid_freqs[None, :, None]
         midlayer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * mphase), mid_amp * 0.5)
-        theme.midlayer_phase = np.mod(mph + (mid_freqs * n / sr)[:, None], 1.0)
+        self.midlayer_phase = np.mod(mph + (mid_freqs * n / sr)[:, None], 1.0)
         for ch in range(2):
-            midlayer[:, ch] = theme._apply_lp_stage(midlayer[:, ch], f"midlayer_lp_{ch}",
+            midlayer[:, ch] = self._apply_lp_stage(midlayer[:, ch], f"midlayer_lp_{ch}",
                                                    MIDLAYER_LP_HZ)
-        mid_gain = _db_to_lin(theme.bed_level_db.value + MIDLAYER_CAL_DB)
+        mid_gain = _db_to_lin(self.bed_level_db.value + MIDLAYER_CAL_DB)
         dry += midlayer * mid_gain
 
-    def _shimmer_ratios(self, dt):
+    def _shimmer_ratios(self, dt, fill_smooth_value, t):
         """Harmonic ratios for the additive layer, including the two glided
         recolorings from the brief: sus4 above fill 0.85 (the 5th slides to a
         4th) and sus2 during a Notification hold (a D partial fades in).
         Ratios are glided rather than switched so the sine phases stay
         continuous -- a hard ratio switch would click."""
-        theme = self.theme
-        theme.sus4_amt.target = 1.0 if theme.fill_smooth.value > 0.85 else 0.0
-        theme.sus4_amt.step(dt)
-        active_sus2 = theme.sus2_until is not None and theme.t < theme.sus2_until
-        theme.sus2_amt.target = 1.0 if active_sus2 else 0.0
-        theme.sus2_amt.step(dt)
+        self.sus4_amt.target = 1.0 if fill_smooth_value > 0.85 else 0.0
+        self.sus4_amt.step(dt)
+        active_sus2 = self.sus2_until is not None and t < self.sus2_until
+        self.sus2_amt.target = 1.0 if active_sus2 else 0.0
+        self.sus2_amt.step(dt)
         r = np.array(SHIMMER_HARMONICS, dtype=np.float64)
-        r[SHIMMER_FIFTH_SLOT] = 3.0 + theme.sus4_amt.value * (SHIMMER_SUS4_RATIO - 3.0)
+        r[SHIMMER_FIFTH_SLOT] = 3.0 + self.sus4_amt.value * (SHIMMER_SUS4_RATIO - 3.0)
         gate = np.ones(len(SHIMMER_HARMONICS))
-        gate[SHIMMER_SUS2_SLOT] = theme.sus2_amt.value
+        gate[SHIMMER_SUS2_SLOT] = self.sus2_amt.value
         return r, gate
+
+    # -- handle_event per-branch handlers (called from AmbientTheme.handle_event,
+    # in the exact original branch order) -----------------------------------
+
+    def handle_posttooluse_recovery(self, tool_name):
+        """PostToolUse's failure-recovery clear: 'success = the tool that
+        failed now works' (BRIEF section 3). Returns True if it cleared the
+        shading (so the caller can also clear fail_penalty, which stays on
+        AmbientTheme -- it drives the master lowpass, not just the bed)."""
+        if (self.failed_tool is None or tool_name == self.failed_tool):
+            self.bass_shaded_vi = False
+            self.failed_tool = None
+            return True
+        return False
+
+    def handle_failure(self, tool_name):
+        self.bass_shaded_vi = True
+        self.failed_tool = tool_name
+
+    def handle_stop(self, t):
+        self.failed_tool = None
+        self.bass_shaded_vi = False
+        self.easing_after_stop_until = t + 6.0
+
+    def handle_notification(self, t):
+        self.holding_breath_until = t + 2.5
+        self.sus2_until = t + 3.0
 
 
 class RainLayer:
     """L2 rain grain stream (per-event drops + activity-driven Poisson bed)
     plus the L1b "air" continuous shaped-noise bed the brief folds into the
-    same rain-gets-closer information channel (see _render_air's own
-    comment). Holds a back-reference to the parent AmbientTheme: drop/onset
-    spawning (_spawn_one_drop/_dispatch_drop/_trigger_event_drop) is also
-    called directly from AmbientTheme.handle_event (an ingress thread) and
-    from the test suite via state._dispatch_drop etc, and draws from the
-    SAME shared render-thread RNG (theme._rng) other layers draw from in a
-    fixed order -- so state/RNG stay owned by AmbientTheme, this class only
-    holds the rendering logic."""
+    same rain-gets-closer information channel (see render_air's own
+    comment). Owns its own drop bank, pacing/coalescing clocks, whoosh, and
+    air-bed state; draws from the render-thread RNG passed in at
+    construction (shared with the other continuous layers, in the same
+    call-order position render_block always called rain/air from).
+    dispatch_drop/spawn_one_drop/trigger_event_drop are public: they are
+    called directly from AmbientTheme.handle_event (an ingress thread,
+    passing its own _ingress_rng) and monkeypatched directly by the test
+    suite."""
 
-    def __init__(self, theme):
-        self.theme = theme
+    def __init__(self, rng, queue_voice, sr, rain_enabled):
+        self._rng = rng
+        self._queue_voice = queue_voice
+        self.sr = sr
+        self.rain_enabled = rain_enabled
 
-    def spawn_one_drop(self, rng, cls, extra_gain_db=0.0):
+        self.drop_bank = _build_drop_bank(rng, sr)
+        self.rain_next_dt = 0.05
+        self.rain_bed_gain_db = Slew(-80.0, tau=2.0)
+        self._pink_zi = None
+        self.whoosh_active = False
+        self.whoosh_gain = Slew(0.0, tau=1.6)
+        self._whoosh_bp = None
+        if _HAVE_SCIPY:
+            nyq = sr / 2.0
+            try:
+                self._whoosh_bp = _sp_signal.butter(2, [150.0 / nyq, 400.0 / nyq], btype="band")
+            except Exception:
+                self._whoosh_bp = None
+        self._whoosh_zi = None
+        # v2.2 pacing overhaul (section 1): the discrete-drop rate itself is
+        # slewed (tau >= 2s) with hysteresis so activity bursts can't lurch
+        # the texture; onsets from ANY source (Poisson rain clock or a
+        # per-event "instant twitch") share one 150ms pacing floor; and
+        # per-event triggers additionally coalesce inside a 250ms window into
+        # one weighted drop instead of stacking N drops per event.
+        self.rain_rate = Slew(0.0, tau=RATE_SLEW_TAU_S)
+        self._last_any_onset_t = -999.0        # global 150ms pacing floor
+        self._last_event_onset_t = -999.0      # 250ms burst-coalescing clock
+        self._event_coalesce_bonus_db = 0.0
+        self.wash_excess = 0.0                  # activity beyond the ~5/s crossfade point
+
+        # L1b air state
+        self.air_gain_db = Slew(-80.0, tau=1.5)
+        self.air_cut_hz = Slew(AIR_TILT_HI_IDLE_HZ, tau=2.5)
+        self._air_zi = {}
+        if _HAVE_SCIPY:
+            self._air_hp = _sp_signal.butter(2, AIR_HP_HZ / (sr / 2.0), btype="high")
+        else:  # pragma: no cover
+            self._air_hp = ([1.0], [1.0])
+        self._air_norm = _air_norm_factor(sr, AIR_TILT_HI_IDLE_HZ, self._air_hp)
+
+    def spawn_one_drop(self, rng, cls, fill_smooth_value, extra_gain_db=0.0):
         """Render and queue exactly one drop voice (the coalesced unit --
         brief-v2.2 section 1: "1 event = 1 drop (weighted)"). `extra_gain_db`
         carries any accumulated burst-coalescing weight."""
-        theme = self.theme
-        fill_now = theme.fill_smooth.value
-        idx = int(rng.integers(0, len(theme.drop_bank)))
-        base = theme.drop_bank[idx]
+        idx = int(rng.integers(0, len(self.drop_bank)))
+        base = self.drop_bank[idx]
         # Register split by tool class (brief-v2.2 section 3): read ->
         # brighter/quieter; exec -> lower center freq (x0.7) + slightly
         # longer (achieved by the same resampling stretching duration).
@@ -1971,38 +2104,36 @@ class RainLayer:
             sig = np.interp(idxs, np.arange(n), base)
         else:
             sig = base.copy()
-        if fill_now > 0.85 and _HAVE_SCIPY:
-            cutoff = 4500.0 + (2000.0 - 4500.0) * min(1.0, (fill_now - 0.85) / 0.15)
-            b, a = _onepole_lp_coeffs(cutoff, theme.sr)
+        if fill_smooth_value > 0.85 and _HAVE_SCIPY:
+            cutoff = 4500.0 + (2000.0 - 4500.0) * min(1.0, (fill_smooth_value - 0.85) / 0.15)
+            b, a = _onepole_lp_coeffs(cutoff, self.sr)
             sig = _sp_signal.lfilter(b, a, sig)
         # brief-v2.2 section 5: per-drop pan constrained to +-0.35 (was full
         # width +-1.0 -- listener evidence: "left/right difference").
         pan = rng.uniform(-DROP_PAN_LIMIT, DROP_PAN_LIMIT)
         stereo = _mono_to_stereo((sig * gain).astype(np.float64), pan=pan)
-        theme._queue_voice({"buf": stereo, "pos": 0, "bus": "reverb"})
+        self._queue_voice({"buf": stereo, "pos": 0, "bus": "reverb"})
 
-    def dispatch_drop(self, rng, cls, extra_gain_db=0.0):
+    def dispatch_drop(self, rng, cls, t, fill_smooth_value, extra_gain_db=0.0):
         """Actually spawn a drop onset, enforcing the global pacing floor
         (brief-v2.2 section 1: "min inter-drop gap 150 ms") across BOTH the
         Poisson rain clock and per-event triggers. Onsets closer than the
         floor are silently absorbed rather than spawned -- this, combined
         with the compressive rate map, is what keeps N1 (never >7 onsets/s)
         satisfied even under an a=1.0 flood."""
-        theme = self.theme
-        if theme.t - theme._last_any_onset_t < DROP_MIN_GAP_S:
+        if t - self._last_any_onset_t < DROP_MIN_GAP_S:
             return False
-        theme._spawn_one_drop(rng, cls, extra_gain_db=extra_gain_db)
-        theme._last_any_onset_t = theme.t
+        self.spawn_one_drop(rng, cls, fill_smooth_value, extra_gain_db=extra_gain_db)
+        self._last_any_onset_t = t
         return True
 
-    def trigger_event_drop(self, rng, cls):
+    def trigger_event_drop(self, rng, cls, t, fill_smooth_value):
         """Per-tool-event "instant twitch" drop trigger (handle_event side).
         Brief-v2.2 section 1 burst coalescing: events arriving < 250 ms apart
         merge into ONE weighted drop instead of stacking one drop per event."""
-        theme = self.theme
-        if theme.t - theme._last_event_onset_t < BURST_COALESCE_WINDOW_S:
-            theme._event_coalesce_bonus_db = min(
-                BURST_COALESCE_MAX_DB, theme._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
+        if t - self._last_event_onset_t < BURST_COALESCE_WINDOW_S:
+            self._event_coalesce_bonus_db = min(
+                BURST_COALESCE_MAX_DB, self._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
             return
         # v2.2 VERIFIER fix: dispatch_drop can REFUSE (the 150 ms global
         # pacing floor, which the Poisson rain clock shares). The previous
@@ -2013,47 +2144,47 @@ class RainLayer:
         # Under a flood that is exactly the case that fires most often. On a
         # refusal, treat the event as merged instead: keep the weight (and
         # add this event's own step) for the next drop that does get through.
-        if theme._dispatch_drop(rng, cls, extra_gain_db=theme._event_coalesce_bonus_db):
-            theme._event_coalesce_bonus_db = 0.0
-            theme._last_event_onset_t = theme.t
+        if self.dispatch_drop(rng, cls, t, fill_smooth_value,
+                               extra_gain_db=self._event_coalesce_bonus_db):
+            self._event_coalesce_bonus_db = 0.0
+            self._last_event_onset_t = t
         else:
-            theme._event_coalesce_bonus_db = min(
-                BURST_COALESCE_MAX_DB, theme._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
+            self._event_coalesce_bonus_db = min(
+                BURST_COALESCE_MAX_DB, self._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
 
-    def render_rain(self, dry, n, dt):
-        theme = self.theme
-        sr = theme.sr
+    def render_rain(self, dry, n, dt, t, activity, current_class, fill_smooth_value):
+        sr = self.sr
         # v2.2 section 1 pacing overhaul. v2's rate map (2 + 38*a**1.3, up to
         # ~40 drops/s) was the direct cause of "too fast / losing control" --
         # well past the ~4-6/s point where auditory counting breaks down. The
         # replacement is compressive (log) and hard-capped at 6 discrete
         # drops/s; the rate parameter itself is slewed (tau >= 2s) with
         # hysteresis so a burst can't lurch the texture.
-        a_raw = max(0.0, theme.activity)   # unclamped: can exceed 1 under a flood
+        a_raw = max(0.0, activity)   # unclamped: can exceed 1 under a flood
         a = min(1.0, a_raw)
         raw_rate = _drop_rate_from_activity(a)
-        if abs(raw_rate - theme.rain_rate.target) > RATE_HYSTERESIS:
-            theme.rain_rate.target = raw_rate
-        theme.rain_rate.step(dt)
-        rate = max(1e-4, theme.rain_rate.value)
+        if abs(raw_rate - self.rain_rate.target) > RATE_HYSTERESIS:
+            self.rain_rate.target = raw_rate
+        self.rain_rate.step(dt)
+        rate = max(1e-4, self.rain_rate.value)
         # Discrete->wash crossfade: activity beyond the point where the
         # compressive map reaches ~5/s (of the 6/s cap) does not add more
         # drops -- it thickens the continuous wash bed instead (render_air
-        # reads theme.wash_excess). Uses the UNCLAMPED activity so a sustained
+        # reads self.wash_excess). Uses the UNCLAMPED activity so a sustained
         # flood (a_raw >> 1) keeps growing the wash even once the discrete
         # rate itself is pinned at the cap.
-        theme.wash_excess = max(0.0, a_raw - WASH_CROSSFADE_A)
-        if theme.rain_enabled and rate > 0:
+        self.wash_excess = max(0.0, a_raw - WASH_CROSSFADE_A)
+        if self.rain_enabled and rate > 0:
             block_dur = n / sr
-            while theme.rain_next_dt <= block_dur:
-                theme._dispatch_drop(theme._rng, theme.current_class)
-                interval = -math.log(max(theme._rng.random(), 1e-12)) / rate
-                theme.rain_next_dt += interval
-            theme.rain_next_dt -= block_dur
-            if theme.rain_next_dt < 0:
-                theme.rain_next_dt = 0.0
+            while self.rain_next_dt <= block_dur:
+                self.dispatch_drop(self._rng, current_class, t, fill_smooth_value)
+                interval = -math.log(max(self._rng.random(), 1e-12)) / rate
+                self.rain_next_dt += interval
+            self.rain_next_dt -= block_dur
+            if self.rain_next_dt < 0:
+                self.rain_next_dt = 0.0
         else:
-            theme.rain_next_dt = max(theme.rain_next_dt, n / sr)
+            self.rain_next_dt = max(self.rain_next_dt, n / sr)
 
         # NOTE: the brief's separate "light pink-noise rain bed that fades in
         # with activity" is folded into the L1b air layer (render_air), whose
@@ -2064,16 +2195,16 @@ class RainLayer:
         # -80 dB is exactly the kind of discontinuity section 7 item 8 flags.
 
         # bash whoosh: 150-400Hz filtered-noise swell while a Bash tool is in flight
-        theme.whoosh_gain.step(dt)
-        if _HAVE_SCIPY and theme._whoosh_bp is not None and theme.whoosh_gain.value > 1e-4:
-            b, a_ = theme._whoosh_bp
-            zi = theme._whoosh_zi
+        self.whoosh_gain.step(dt)
+        if _HAVE_SCIPY and self._whoosh_bp is not None and self.whoosh_gain.value > 1e-4:
+            b, a_ = self._whoosh_bp
+            zi = self._whoosh_zi
             if zi is None:
                 zi = _sp_signal.lfiltic(b, a_, [0.0])
-            noise = theme._rng.standard_normal(n)
+            noise = self._rng.standard_normal(n)
             filtered, zf = _sp_signal.lfilter(b, a_, noise, zi=zi)
-            theme._whoosh_zi = zf
-            gain = _db_to_lin(-34.0 + WHOOSH_CAL_DB) * theme.whoosh_gain.value
+            self._whoosh_zi = zf
+            gain = _db_to_lin(-34.0 + WHOOSH_CAL_DB) * self.whoosh_gain.value
             dry[:, 0] += filtered * gain
             dry[:, 1] += filtered * gain
 
@@ -2083,22 +2214,21 @@ class RainLayer:
         `white` may be (n,) or (n, k); the filter state adapts to its shape on
         first use, so the same helper serves both the mono rain bed and the
         3-channel air generator."""
-        theme = self.theme
         poles = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
         shape = None if white.ndim == 1 else (1,) + white.shape[1:]
-        if theme._pink_zi is None or theme._pink_zi[0] is Ellipsis:
-            theme._pink_zi = [None, None, None]
+        if self._pink_zi is None or self._pink_zi[0] is Ellipsis:
+            self._pink_zi = [None, None, None]
         total = white * 0.1848
         for i, (pole, gain) in enumerate(poles):
-            zi = theme._pink_zi[i]
+            zi = self._pink_zi[i]
             if zi is None or (shape is None) != (np.ndim(zi) == 1):
                 zi = np.zeros(1) if shape is None else np.zeros(shape)
             y, zf = _sp_signal.lfilter([gain], [1.0, -pole], white, zi=zi, axis=0)
-            theme._pink_zi[i] = zf
+            self._pink_zi[i] = zf
             total = total + y
         return total
 
-    def render_air(self, n, dt):
+    def render_air(self, n, dt, activity_med, bed_level_db_value, fail_penalty_slew_value):
         """L1b continuous shaped-noise bed. Returns (n,2).
 
         One pink generator feeding three decorrelated streams: a common
@@ -2109,7 +2239,6 @@ class RainLayer:
         follow activity: that is the "rain gets closer" information channel
         and it moves both the RMS and the spectral centroid, which is what
         section 7 item 9 asks for."""
-        theme = self.theme
         if not _HAVE_SCIPY:
             return np.zeros((n, 2))
         # The air level follows a MEDIUM-smoothed activity envelope (tau 10 s),
@@ -2117,80 +2246,115 @@ class RainLayer:
         # must not pump the bed: the instant twitch is the grains' job, and a
         # bed that tracked every PreToolUse swung short-term (3 s) RMS by
         # 4.3 dB, failing section 7 item 8 inside a single constant state.
-        a = max(0.0, min(1.0, theme.activity_med))
+        a = max(0.0, min(1.0, activity_med))
         # v2.2 section 1 wash crossfade: sustained activity beyond the point
         # where the discrete-drop rate map saturates (~5/s) thickens this
         # layer further instead of adding more taps -- "heavy work = thicker
         # wash, not faster taps". Normalized so a moderate flood (excess~=0.5)
         # already reaches the full extra boost.
-        wash_boost = min(1.0, theme.wash_excess / 0.5)
+        wash_boost = min(1.0, self.wash_excess / 0.5)
         # level: tracks the bed's own state envelope, opened up by activity
-        floor_db = theme.bed_level_db.value + AIR_FLOOR_OFFSET_DB
-        theme.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
+        floor_db = bed_level_db_value + AIR_FLOOR_OFFSET_DB
+        self.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
             AIR_WASH_BOOST_RANGE_DB * wash_boost)
-        theme.air_gain_db.step(dt)
+        self.air_gain_db.step(dt)
         # "gloom": a failure also dims the bed's own top end, which is where
         # most of this mix's 2-6 kHz energy lives. The master one-pole alone
         # could not deliver an audible darkening.
-        gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, theme.fail_penalty_slew.value / 2400.0)
-        theme.air_cut_hz.target = (AIR_TILT_HI_IDLE_HZ + (
+        gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, fail_penalty_slew_value / 2400.0)
+        self.air_cut_hz.target = (AIR_TILT_HI_IDLE_HZ + (
             AIR_TILT_HI_ACTIVE_HZ - AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
             + AIR_WASH_BOOST_HZ * wash_boost) * gloom
-        theme.air_cut_hz.step(dt)
-        if theme.air_gain_db.value < -70.0:
+        self.air_cut_hz.step(dt)
+        if self.air_gain_db.value < -70.0:
             return np.zeros((n, 2))
 
-        white = theme._rng.standard_normal((n, 3))
+        white = self._rng.standard_normal((n, 3))
         x = self.pink_noise_block(white)
-        x = self.air_stage(x, "lo", *_onepole_lp_coeffs(AIR_TILT_LO_HZ, theme.sr), 3)
-        x = self.air_stage(x, "hi", *_onepole_lp_coeffs(theme.air_cut_hz.value, theme.sr), 3)
-        b_hp, a_hp = theme._air_hp
+        x = self.air_stage(x, "lo", *_onepole_lp_coeffs(AIR_TILT_LO_HZ, self.sr), 3)
+        x = self.air_stage(x, "hi", *_onepole_lp_coeffs(self.air_cut_hz.value, self.sr), 3)
+        b_hp, a_hp = self._air_hp
         x = self.air_stage(x, "hp", b_hp, a_hp, 3)
-        gain = _db_to_lin(theme.air_gain_db.value + AIR_CAL_DB) * theme._air_norm
+        gain = _db_to_lin(self.air_gain_db.value + AIR_CAL_DB) * self._air_norm
         out = np.empty((n, 2))
         out[:, 0] = (x[:, 0] + AIR_DECORR * x[:, 1]) * gain
         out[:, 1] = (x[:, 0] + AIR_DECORR * x[:, 2]) * gain
         return out
 
     def air_stage(self, x, key, b, a, nch):
-        theme = self.theme
-        zi = theme._air_zi.get(key)
+        zi = self._air_zi.get(key)
         if zi is None or zi.shape[-1] != nch:
             zi = np.zeros((max(len(a), len(b)) - 1, nch))
         y, zf = _sp_signal.lfilter(b, a, x, zi=zi, axis=0)
-        theme._air_zi[key] = zf
+        self._air_zi[key] = zf
         return y
+
+    # -- handle_event handlers (called from AmbientTheme.handle_event, in the
+    # exact original branch order) -------------------------------------------
+
+    def handle_pretooluse(self, rng, cls, tool_name, t, fill_smooth_value):
+        if self.rain_enabled:
+            # brief-v2.2 section 1: "1 event = 1 drop (weighted)" -- no
+            # more stacking 1-3 drops per event. Bursts closer than 250ms
+            # coalesce into one weighted onset (trigger_event_drop).
+            self.trigger_event_drop(rng, cls, t, fill_smooth_value)
+        if tool_name == "Bash" and cls == CLASS_EXEC:
+            self.whoosh_active = True
+            self.whoosh_gain.tau = 1.6
+            self.whoosh_gain.target = 1.0
+
+    def handle_posttooluse(self, tool_name):
+        if tool_name == "Bash":
+            self.whoosh_active = False
+            self.whoosh_gain.tau = 1.8
+            self.whoosh_gain.target = 0.0
+
+    def handle_failure(self):
+        self.whoosh_active = False
+        self.whoosh_gain.tau = 1.8
+        self.whoosh_gain.target = 0.0
 
 
 class BloomLayer:
-    """L3 self-playing FM e-piano "bloom" melody (brief section 6). Holds a
-    back-reference to the parent AmbientTheme: note spawning goes through
-    theme._spawn_note (not a bloom-exclusive method -- rain's write-note and
-    handle_event's Stop/PreCompact/Notification gestures use it too, and it
-    draws from the shared render-thread RNG in the same call-order position
-    render_block always called the bloom scheduler from)."""
+    """L3 self-playing FM e-piano "bloom" melody (brief section 6). Owns its
+    own scheduler/pool-selection state. Note spawning goes through the
+    `spawn_note` callback passed at construction (AmbientTheme's shared note-
+    spawning facility -- not bloom-exclusive: rain's write-note and
+    handle_event's Stop/PreCompact/Notification gestures use it too) and the
+    per-pitch refractory dict is likewise shared (a write-triggered note and
+    a self-play note must not double-fire the same pitch), so both are
+    passed in rather than owned here. Draws from the render-thread RNG
+    passed in at construction, in the same call-order position render_block
+    always called the bloom scheduler from."""
 
-    def __init__(self, theme):
-        self.theme = theme
+    def __init__(self, rng, spawn_note, note_refractory, sr):
+        self._rng = rng
+        self._spawn_note = spawn_note
+        self._note_refractory = note_refractory
+        self.sr = sr
 
-    def render(self, n, dt):
-        theme = self.theme
+        self.next_note_dt = 3.0
+        self.last_note_t = -999.0
+        self._last_bloom_pool_idx = None  # v2.2 section 6: stepwise motion bias
+
+    def render(self, n, dt, t, activity, activity_slow):
         # second, slower-smoothed activity envelope (tau 15s) driving L3 rate
-        a_target = max(0.0, min(1.0, theme.activity))
+        a_target = max(0.0, min(1.0, activity))
         alpha = 1.0 - math.exp(-dt / 15.0)
-        theme.activity_slow += (a_target - theme.activity_slow) * alpha
+        activity_slow += (a_target - activity_slow) * alpha
 
         idle_rate = 1.0 / 45.0
         busy_rate = 1.0 / 2.5
-        rate = idle_rate + (busy_rate - idle_rate) * theme.activity_slow
+        rate = idle_rate + (busy_rate - idle_rate) * activity_slow
         rate = max(rate, 1e-4)
 
-        block_dur = n / theme.sr
-        theme.next_note_dt -= block_dur
-        if theme.next_note_dt <= 0:
-            self._maybe_fire_note()
-            interval = -math.log(max(theme._rng.random(), 1e-12)) / rate
-            theme.next_note_dt = interval
+        block_dur = n / self.sr
+        self.next_note_dt -= block_dur
+        if self.next_note_dt <= 0:
+            self._maybe_fire_note(t, activity_slow)
+            interval = -math.log(max(self._rng.random(), 1e-12)) / rate
+            self.next_note_dt = interval
+        return activity_slow
 
     def _pick_idx(self, rng, idle_mode):
         """Pick a pool index. Brief-v2.2 section 6: melodic pool selection is
@@ -2198,14 +2362,13 @@ class BloomLayer:
         previous) so the bloom reads as intentional phrasing rather than
         random scatter. idle_mode restricts the candidate set to the mid
         register (section 4: "never the top octave alone" at idle)."""
-        theme = self.theme
         if idle_mode:
             candidates = AMBIENT_MID_REGISTER_IDXS
             weights = AMBIENT_MID_REGISTER_WEIGHTS
         else:
             candidates = np.arange(len(AMBIENT_NOTE_POOL))
             weights = AMBIENT_NOTE_WEIGHTS
-        last_idx = theme._last_bloom_pool_idx
+        last_idx = self._last_bloom_pool_idx
         if last_idx is not None and rng.random() < STEPWISE_BIAS_PROB:
             lo, hi = last_idx - STEPWISE_BIAS_STEPS, last_idx + STEPWISE_BIAS_STEPS
             near = candidates[(candidates >= lo) & (candidates <= hi)]
@@ -2215,20 +2378,19 @@ class BloomLayer:
                 return int(rng.choice(near, p=near_w))
         return int(rng.choice(candidates, p=weights))
 
-    def _maybe_fire_note(self):
-        theme = self.theme
+    def _maybe_fire_note(self, t, activity_slow):
         # brief-v2.2 section 1 pacing floor: melodic notes min gap 2.5s when
         # busy (idle self-play keeps its own ~1/45s Poisson clock, which is
         # already far looser than this floor).
-        if theme.t - theme.last_note_t < NOTE_MIN_GAP_S:
+        if t - self.last_note_t < NOTE_MIN_GAP_S:
             return  # scheduler will retry next Poisson tick
-        rng = theme._rng
-        idle_mode = theme.activity_slow < BLOOM_IDLE_SLOW_ACTIVITY_THRESH
+        rng = self._rng
+        idle_mode = activity_slow < BLOOM_IDLE_SLOW_ACTIVITY_THRESH
         for _attempt in range(3):
             idx = self._pick_idx(rng, idle_mode)
             midi = int(AMBIENT_NOTE_POOL[idx])
-            last = theme._note_refractory.get(midi, -999.0)
-            if theme.t - last >= 10.0:
+            last = self._note_refractory.get(midi, -999.0)
+            if t - last >= 10.0:
                 break
         else:
             return
@@ -2238,18 +2400,18 @@ class BloomLayer:
         # voice is now ONLY used for the Notification/PermissionRequest
         # gesture (handle_event), never from self-play.
         embed_cap = NOTE_EMBED_CAP_IDLE_DB if idle_mode else NOTE_EMBED_CAP_DB
-        theme._spawn_note(rng, freq, velocity=velocity, bell=False, embed_cap_db=embed_cap)
-        theme._note_refractory[midi] = theme.t
-        theme.last_note_t = theme.t
-        theme._last_bloom_pool_idx = idx
+        self._spawn_note(rng, freq, velocity=velocity, bell=False, embed_cap_db=embed_cap)
+        self._note_refractory[midi] = t
+        self.last_note_t = t
+        self._last_bloom_pool_idx = idx
         if not idle_mode and rng.random() < 0.15:
             extra = int(rng.integers(1, 3))
             for _ in range(extra):
                 idx2 = self._pick_idx(rng, idle_mode)
                 midi2 = int(AMBIENT_NOTE_POOL[idx2])
                 spacing = rng.uniform(0.08, 0.25)
-                theme._spawn_note(rng, _midi_hz(midi2), velocity=velocity * 0.8, delay_s=spacing)
-                theme._last_bloom_pool_idx = idx2
+                self._spawn_note(rng, _midi_hz(midi2), velocity=velocity * 0.8, delay_s=spacing)
+                self._last_bloom_pool_idx = idx2
 
 
 class AmbientTheme:
@@ -2298,130 +2460,21 @@ class AmbientTheme:
         self.activity_med = 0.0
         self.activity_slow = 0.0
         self.current_class = CLASS_READ
-        self.subagent_refcount = 0
 
         self.session_started = False
         self.session_start_t = None
         self.session_ended = False
         self.session_end_t = None
 
-        # L1 bed pad state
-        self.bed_phase = np.zeros((2, 2, SUPERSAW_VOICES))  # [bed(C2/C3), ch(L/R), voice]
-        self.bed_phase[:] = self._rng.random(self.bed_phase.shape)
-        self.bed_lr_cents = np.array([-1.0, 1.0])
-        # Precomputed (28,) voice frequencies and the (28,2) mixdown matrix so
-        # the whole supersaw is one matmul per block (see _render_bed).
-        freqs = np.zeros((2, 2, SUPERSAW_VOICES))
-        mix = np.zeros((2, 2, SUPERSAW_VOICES, 2))
-        for bed_i, f0 in enumerate((ROOT_C2, ROOT_C3)):
-            bed_gain = 1.0 if bed_i == 0 else 0.35
-            for ch in range(2):
-                for v in range(SUPERSAW_VOICES):
-                    cents = SUPERSAW_CENTS[v] + self.bed_lr_cents[ch]
-                    freqs[bed_i, ch, v] = f0 * (2.0 ** (cents / 1200.0))
-                    mix[bed_i, ch, v, ch] = SUPERSAW_AMPS[v] * bed_gain / SUPERSAW_VOICES
-        self._bed_freqs = freqs.reshape(-1)
-        self._bed_mix = mix.reshape(-1, 2)
-        self.bed_cutoff_oct = 0.0
-        self.bed_gain_db = 0.0
-        self.shimmer_phase = self._rng.random((len(SHIMMER_HARMONICS), 2))
-        self.shimmer_amp_x = np.zeros(len(SHIMMER_HARMONICS))  # OU state, multiplicative +-30%
-        self.bed_level_db = Slew(-80.0, tau=1.5)
-        self.bed_root_ratio = Slew(1.0, tau=3.0)   # I <-> vi shading
-        self.sus2_amt = Slew(0.0, tau=1.2)         # Notification recoloring
-        self.sus4_amt = Slew(0.0, tau=4.0)         # fill > 0.85 recoloring
-        self.air_gain_db = Slew(-80.0, tau=1.5)
-        self.air_cut_hz = Slew(AIR_TILT_HI_IDLE_HZ, tau=2.5)
-        self._air_zi = {}
-        if _HAVE_SCIPY:
-            self._air_hp = _sp_signal.butter(2, AIR_HP_HZ / (sr / 2.0), btype="high")
-        else:  # pragma: no cover
-            self._air_hp = ([1.0], [1.0])
-        self._air_norm = _air_norm_factor(sr, AIR_TILT_HI_IDLE_HZ, self._air_hp)
-        self._lp_zi = {}
-        self.holding_breath_until = None
-        self.easing_after_stop_until = None
-        self.sus2_until = None
-        # v2.2 brightness-lift mid layer (C3+G3): two independent OU amplitude
-        # walks, same tambura-shimmer treatment as the low additive layer, but
-        # its own state so it can be gated/leveled independently.
-        # sized from MIDLAYER_FREQS, not a hard-coded 2: a 3-voice mid layer
-        # used to render as SILENCE (shape mismatch -> exception -> the
-        # render_block fault handler zeroes the block) instead of erroring.
-        self.midlayer_phase = self._rng.random((len(MIDLAYER_FREQS), 2))
-        self.midlayer_amp_x = np.zeros(len(MIDLAYER_FREQS))
-        self.bed_layer = BedLayer(self)
-
-        # L2 rain state
-        self.drop_bank = _build_drop_bank(self._rng, sr)
-        self.rain_next_dt = 0.05
-        self.rain_bed_gain_db = Slew(-80.0, tau=2.0)
-        self._pink_zi = None
-        self.whoosh_active = False
-        self.whoosh_gain = Slew(0.0, tau=1.6)
-        self._whoosh_bp = None
-        if _HAVE_SCIPY:
-            nyq = sr / 2.0
-            try:
-                self._whoosh_bp = _sp_signal.butter(2, [150.0 / nyq, 400.0 / nyq], btype="band")
-            except Exception:
-                self._whoosh_bp = None
-        self._whoosh_zi = None
-        # v2.2 pacing overhaul (section 1): the discrete-drop rate itself is
-        # slewed (tau >= 2s) with hysteresis so activity bursts can't lurch
-        # the texture; onsets from ANY source (Poisson rain clock or a
-        # per-event "instant twitch") share one 150ms pacing floor; and
-        # per-event triggers additionally coalesce inside a 250ms window into
-        # one weighted drop instead of stacking N drops per event.
-        self.rain_rate = Slew(0.0, tau=RATE_SLEW_TAU_S)
-        self._last_any_onset_t = -999.0        # global 150ms pacing floor
-        self._last_event_onset_t = -999.0      # 250ms burst-coalescing clock
-        self._event_coalesce_bonus_db = 0.0
-        self.wash_excess = 0.0                  # activity beyond the ~5/s crossfade point
-        self.rain_layer = RainLayer(self)
-
-        # L3 melodic bloom state
-        self.next_note_dt = 3.0
-        self.last_note_t = -999.0
-        self._note_refractory = {}  # midi -> last played self.t
-        self.bass_shaded_vi = False  # PostToolUseFailure shading, released on Stop
-        self._duck_start_t = None    # "room pause" one-shot (see _duck_block)
-        self._duck_gain_z = 1.0      # smoothing state for the duck envelope
-        self.failed_tool = None      # tool whose retry-success clears the shading
-        self._last_bloom_pool_idx = None  # v2.2 section 6: stepwise motion bias
-        self.bloom_layer = BloomLayer(self)
-
-        # L4 subagent stems
-        self.stem1_gain = Slew(0.0, tau=1.7)   # ~5s equal-power-ish fade-in
-        self.stem2_gain = Slew(0.0, tau=1.7)
-        self.stem_phase = self._rng.random(2)
-        self.stem_pan = 0.3
-        self._stem_pan_toggle = False
-        self.stem_layer = StemLayer(self)
-
-        # L5 context-pressure weather
-        self.fill = 0.0
-        self.fill_smooth = Slew(0.0, tau=5.0)
-        self.subbass_phase = 0.0
-        # These two are driven from fill_smooth, which ALREADY carries the
-        # brief's "slew tau >= 5 s". Giving them a second 5 s lag of their own
-        # cascaded into ~10 s of effective smoothing: measured on the demo,
-        # the sub-bass drone was still 20 dB below its target at the moment
-        # of peak context pressure and the master lowpass was 800 Hz behind,
-        # so the whole L5 weather layer arrived after the weather had passed.
-        # 0.5 s here is just enough to keep the coefficient changes zipper-free.
-        self.subbass_gain = Slew(-80.0, tau=0.5)
-        self.master_lp_cutoff = Slew(6000.0, tau=0.5)
-        self.fail_penalty_hz = 0.0
-        self.fail_penalty_slew = Slew(0.0, tau=1.5)
-        self.weather_layer = WeatherLayer(self)
-
-        # Voice pool (drops + bloom notes + gestures). `voices` is owned
-        # exclusively by the render/audio thread. Everything that wants to
-        # start a voice -- including handle_event on an HTTP/UDP ingress
-        # thread -- appends a ready-made buffer to the bounded `_pending`
-        # deque instead; the render thread drains it at the top of each
-        # block (_collect_voices). deque.append/popleft are individually
+        # Voice pool (drops + bloom notes + gestures) must exist before the
+        # layer constructors below, since RainLayer's ctor doesn't need it
+        # but layers' render() methods call self._queue_voice via the bound
+        # method reference captured at construction time either way. `voices`
+        # is owned exclusively by the render/audio thread. Everything that
+        # wants to start a voice -- including handle_event on an HTTP/UDP
+        # ingress thread -- appends a ready-made buffer to the bounded
+        # `_pending` deque instead; the render thread drains it at the top of
+        # each block (_collect_voices). deque.append/popleft are individually
         # atomic under the GIL, so this needs no lock, and unlike the
         # previous design the ingress thread never does pop(0)/insert(0) on
         # the list the mixer is walking (that could re-index a voice mid-mix
@@ -2429,6 +2482,49 @@ class AmbientTheme:
         # event flood the same way MAX_ACTIVE_CHIMES does for v1.
         self.voices = []
         self._pending = collections.deque()
+
+        # _lp_zi is a shared one-pole-filter-state dict: BedLayer's own bed/
+        # midlayer lowpass stages, StemLayer's stem lowpass stages, and the
+        # master bus's send/air lowpass all key into the SAME dict (distinct
+        # string keys per stage), so it stays here rather than being owned
+        # by any one layer.
+        self._lp_zi = {}
+
+        # Shared per-pitch refractory dict (write-triggered notes below and
+        # BloomLayer's self-play must not double-fire the same pitch).
+        self._note_refractory = {}  # midi -> last played self.t
+
+        # Layer construction order matters: each layer's constructor draws
+        # from self._rng (bed_phase/shimmer_phase/midlayer_phase, then the
+        # drop bank, then stem_phase), and that draw order must stay
+        # identical to the pre-split single-__init__ sequence for
+        # byte-identical renders under a fixed seed.
+        self.bed = BedLayer(self._rng, self._apply_lp_stage, sr)
+        self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled)
+        self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr)
+        self.stem = StemLayer(self._rng, self._apply_lp_stage, sr)
+        self.weather = WeatherLayer(sr)
+
+        # L5 context-pressure weather (shared/master-bus state; see
+        # WeatherLayer docstring for why fill/fail-penalty stay here)
+        self.fill = 0.0
+        self.fill_smooth = Slew(0.0, tau=5.0)
+        # master_lp_cutoff/fail_penalty_slew are driven from fill_smooth,
+        # which ALREADY carries the brief's "slew tau >= 5 s". Giving them a
+        # second 5 s lag of their own cascaded into ~10 s of effective
+        # smoothing: measured on the demo, the sub-bass drone was still 20 dB
+        # below its target at the moment of peak context pressure and the
+        # master lowpass was 800 Hz behind, so the whole L5 weather layer
+        # arrived after the weather had passed. 0.5 s here is just enough to
+        # keep the coefficient changes zipper-free.
+        self.master_lp_cutoff = Slew(6000.0, tau=0.5)
+        self.fail_penalty_hz = 0.0
+        self.fail_penalty_slew = Slew(0.0, tau=1.5)
+
+        # "Room pause" duck (see _duck_block): a mix-bus concern applied to
+        # multiple sustained layers' output, not owned by any one of them.
+        self._duck_start_t = None
+        self._duck_gain_z = 1.0
 
         # freeverb + master DC blocker state
         self.reverb = Freeverb(sr)
@@ -2469,11 +2565,7 @@ class AmbientTheme:
             # class, not in energy -- the storyboard arc has to be audible as
             # loudness, not just as timbre.
             self.activity += ACTIVITY_BUMP.get(cls, 0.35)
-            if self.rain_enabled:
-                # brief-v2.2 section 1: "1 event = 1 drop (weighted)" -- no
-                # more stacking 1-3 drops per event. Bursts closer than 250ms
-                # coalesce into one weighted onset (_trigger_event_drop).
-                self._trigger_event_drop(rng, cls)
+            self.rain.handle_pretooluse(rng, cls, tool_name, self.t, self.fill_smooth.value)
             if cls == CLASS_WRITE and rng.random() < 0.30 and self.gestures_enabled:
                 midi, hz = _pick_write_register_note(rng)
                 # Same per-pitch refractory the bloom scheduler uses: without
@@ -2483,10 +2575,6 @@ class AmbientTheme:
                 if self.t - self._note_refractory.get(midi, -999.0) >= 6.0:
                     self._note_refractory[midi] = self.t
                     self._spawn_note(rng, hz, velocity=0.5)
-            if tool_name == "Bash" and cls == CLASS_EXEC:
-                self.whoosh_active = True
-                self.whoosh_gain.tau = 1.6
-                self.whoosh_gain.target = 1.0
         elif name == "PostToolUse":
             self.activity += 0.15
             # "the room got darker ... stays unresolved until next Stop/
@@ -2494,36 +2582,28 @@ class AmbientTheme:
             # works; unrelated tool calls in between do not clear it, so the
             # shading actually tracks the failure instead of evaporating on
             # the next Read.
-            if (self.fail_penalty_hz > 0.0 or self.bass_shaded_vi) and (
-                    self.failed_tool is None or tool_name == self.failed_tool):
-                self.bass_shaded_vi = False
-                self.failed_tool = None
-                self.fail_penalty_hz = 0.0
-                self.fail_penalty_slew.tau = 4.0
-                self.fail_penalty_slew.target = 0.0
-            if tool_name == "Bash":
-                self.whoosh_active = False
-                self.whoosh_gain.tau = 1.8
-                self.whoosh_gain.target = 0.0
+            if (self.fail_penalty_hz > 0.0 or self.bed.bass_shaded_vi):
+                if self.bed.handle_posttooluse_recovery(tool_name):
+                    self.fail_penalty_hz = 0.0
+                    self.fail_penalty_slew.tau = 4.0
+                    self.fail_penalty_slew.target = 0.0
+            self.rain.handle_posttooluse(tool_name)
         elif name == "PostToolUseFailure":
-            self.whoosh_active = False
-            self.whoosh_gain.tau = 1.8
-            self.whoosh_gain.target = 0.0
+            self.rain.handle_failure()
             # "Room pause": the sustained layers dip for ~0.45 s so the knock
             # reads by contrast rather than by level (see _duck_block).
             self._duck_start_t = self.t
             if self.gestures_enabled:
                 # v2.2 embedding rule: knock peak <= bed RMS + KNOCK_EMBED_CAP_DB,
                 # relative to the CURRENT calibrated bed reference (not a fixed trim).
-                bed_ref_db = self.bed_level_db.value + BED_CAL_DB
+                bed_ref_db = self.bed.bed_level_db.value + BED_CAL_DB
                 knock = _render_knock(rng, velocity=0.75, sr=self.sr) * _db_to_lin(
                     bed_ref_db + KNOCK_EMBED_CAP_DB)
                 direct = _mono_to_stereo((knock * 0.85).astype(np.float64), pan=0.0)
                 self._queue_voice({"buf": direct, "pos": 0, "bus": "direct"})
                 send = _mono_to_stereo((knock * 0.15).astype(np.float64), pan=0.0)
                 self._queue_voice({"buf": send, "pos": 0, "bus": "reverb"})
-            self.bass_shaded_vi = True
-            self.failed_tool = tool_name
+            self.bed.handle_failure(tool_name)
             # BRIEF: "repeated failures each pull master LP down another
             # 300 Hz (floor 1.8 kHz)". 300 Hz off a 6 kHz one-pole is
             # inaudible (measured: 0.0 dB change in the 2-6 kHz band), so the
@@ -2541,21 +2621,18 @@ class AmbientTheme:
                 pitch_midi = int(rng.choice([55, 57]))  # G3 / A3
                 self._spawn_note(rng, _midi_hz(pitch_midi), velocity=0.35, gain_db=2.0)
         elif name == "Stop":
-            self.failed_tool = None
+            self.bed.handle_stop(self.t)
             if self.gestures_enabled:
                 notes = _build_cadence_notes(rng)
                 # brief-v2.2 section 5: "knock/cadence center" -- pan=0.0.
                 self._spawn_note_sequence(rng, notes, velocity=0.4, spacing=0.26,
                                           gain_db=-2.0, pan=0.0)
             self.activity *= 0.3
-            self.bass_shaded_vi = False
             self.fail_penalty_hz = 0.0
             self.fail_penalty_slew.tau = 5.0
             self.fail_penalty_slew.target = 0.0
-            self.easing_after_stop_until = self.t + 6.0
         elif name in ("Notification", "PermissionRequest"):
-            self.holding_breath_until = self.t + 2.5
-            self.sus2_until = self.t + 3.0
+            self.bed.handle_notification(self.t)
             if self.gestures_enabled:
                 # BRIEF suggests A5/E5; dropped an octave to A4/E4 during v2
                 # verification. At A5 the r=3.5 mod puts the chime's upper
@@ -2570,22 +2647,9 @@ class AmbientTheme:
                 self._spawn_note(rng, e4, velocity=0.3, bell=True, i_peak=1.2,
                                  delay_s=0.18, gain_db=5.0)
         elif name == "SubagentStart":
-            self.subagent_refcount += 1
-            self._stem_pan_toggle = not self._stem_pan_toggle
-            self.stem_pan = 0.3 if self._stem_pan_toggle else -0.3
-            self.stem1_gain.tau = 1.7
-            self.stem1_gain.target = 1.0
-            if self.subagent_refcount >= 2:
-                self.stem2_gain.tau = 1.7
-                self.stem2_gain.target = 1.0
+            self.stem.handle_subagent_start()
         elif name == "SubagentStop":
-            self.subagent_refcount = max(0, self.subagent_refcount - 1)
-            if self.subagent_refcount < 1:
-                self.stem1_gain.tau = 2.7
-                self.stem1_gain.target = 0.0
-            if self.subagent_refcount < 2:
-                self.stem2_gain.tau = 2.7
-                self.stem2_gain.target = 0.0
+            self.stem.handle_subagent_stop()
         elif name == "PreCompact":
             if self.gestures_enabled:
                 c3 = _midi_hz(48)
@@ -2646,15 +2710,6 @@ class AmbientTheme:
                 break
             _voice_pool_add(self.voices, voice, self.sr)
 
-    def _spawn_one_drop(self, rng, cls, extra_gain_db=0.0):
-        self.rain_layer.spawn_one_drop(rng, cls, extra_gain_db=extra_gain_db)
-
-    def _dispatch_drop(self, rng, cls, extra_gain_db=0.0):
-        return self.rain_layer.dispatch_drop(rng, cls, extra_gain_db=extra_gain_db)
-
-    def _trigger_event_drop(self, rng, cls):
-        self.rain_layer.trigger_event_drop(rng, cls)
-
     def _spawn_note(self, rng, freq, velocity=0.4, bell=False, i_peak=None, pan=None,
                     delay_s=0.0, gain_db=0.0, embed_cap_db=NOTE_EMBED_CAP_DB):
         sig = _render_fm_note(rng, freq, velocity, sr=self.sr, bell=bell, i_peak_override=i_peak)
@@ -2669,7 +2724,7 @@ class AmbientTheme:
         # `gain_db` may only ever pull a note quieter than the cap, never
         # push it past -- that headroom is exactly what made the v2
         # Notification chime read as "a far-away bing under pressure".
-        bed_ref_db = self.bed_level_db.value + BED_CAL_DB
+        bed_ref_db = self.bed.bed_level_db.value + BED_CAL_DB
         eff_cap_db = min(embed_cap_db, embed_cap_db + gain_db)
         sig = sig * _db_to_lin(bed_ref_db + eff_cap_db)
         stereo = _mono_to_stereo(sig.astype(np.float64), pan=pan)
@@ -2710,9 +2765,10 @@ class AmbientTheme:
             # reverberating it just smears it and eats headroom).
             self._collect_voices()
             send = np.zeros((n, 2), dtype=np.float64)
-            self._render_bed(send, n, dt)
-            self._render_subagent_stems(send, n, dt)
-            self._render_bloom_scheduler(n, dt)
+            self.bed.render(send, n, dt, self.t, self.last_event_t, self.session_start_t,
+                             self.fill_smooth.value)
+            self.stem.render(send, n, dt)
+            self.activity_slow = self.bloom.render(n, dt, self.t, self.activity, self.activity_slow)
             # "Room pause" duck (see _duck_block): applied to the SUSTAINED
             # layers only -- bed pad, stems, air, sub-bass -- and never to the
             # voice buses, so the knock itself is untouched and gains its
@@ -2724,8 +2780,10 @@ class AmbientTheme:
             send += reverb_send
 
             air = np.zeros((n, 2), dtype=np.float64)
-            self._render_rain(air, n, dt)
-            air += self._render_air(n, dt)
+            self.rain.render_rain(air, n, dt, self.t, self.activity, self.current_class,
+                                   self.fill_smooth.value)
+            air += self.rain.render_air(n, dt, self.activity_med, self.bed.bed_level_db.value,
+                                         self.fail_penalty_slew.value)
             if duck is not None:
                 air *= duck
 
@@ -2736,7 +2794,7 @@ class AmbientTheme:
             wet = self.reverb.process_block(mono_in) * AMBIENT_WET_GAIN
 
             out = wet + (send + air) * AMBIENT_DRY_GAIN + direct_bus
-            sub = self._render_subbass(n, dt)
+            sub = self.weather.render(n, dt, self.fill_smooth.value)
             out += sub * duck if duck is not None else sub
 
             # brief-v2.2 section 5: mid/side ratio limited (S <= 0.5*M) --
@@ -2789,20 +2847,21 @@ class AmbientTheme:
             self.activity_med = 0.0
         if not math.isfinite(self.fill):
             self.fill = 0.0
-        if not math.isfinite(self.bed_cutoff_oct):
-            self.bed_cutoff_oct = 0.0
-        if not math.isfinite(self.bed_gain_db):
-            self.bed_gain_db = 0.0
-        if not np.all(np.isfinite(self.shimmer_amp_x)):
-            self.shimmer_amp_x[:] = 0.0
-        if not np.all(np.isfinite(self.bed_phase)):
-            self.bed_phase[:] = 0.0
-        if not np.all(np.isfinite(self.shimmer_phase)):
-            self.shimmer_phase[:] = 0.0
-        if not np.all(np.isfinite(self.midlayer_amp_x)):
-            self.midlayer_amp_x[:] = 0.0
-        if not np.all(np.isfinite(self.midlayer_phase)):
-            self.midlayer_phase[:] = 0.0
+        bed = self.bed
+        if not math.isfinite(bed.bed_cutoff_oct):
+            bed.bed_cutoff_oct = 0.0
+        if not math.isfinite(bed.bed_gain_db):
+            bed.bed_gain_db = 0.0
+        if not np.all(np.isfinite(bed.shimmer_amp_x)):
+            bed.shimmer_amp_x[:] = 0.0
+        if not np.all(np.isfinite(bed.bed_phase)):
+            bed.bed_phase[:] = 0.0
+        if not np.all(np.isfinite(bed.shimmer_phase)):
+            bed.shimmer_phase[:] = 0.0
+        if not np.all(np.isfinite(bed.midlayer_amp_x)):
+            bed.midlayer_amp_x[:] = 0.0
+        if not np.all(np.isfinite(bed.midlayer_phase)):
+            bed.midlayer_phase[:] = 0.0
 
     def _duck_block(self, n):
         """"Room pause" gain envelope, or None when no duck is running.
@@ -2863,10 +2922,12 @@ class AmbientTheme:
         self._duck_gain_z = float(y[-1])
         return y[:, None]
 
-    def _render_bed(self, dry, n, dt):
-        self.bed_layer.render(dry, n, dt)
-
     def _apply_lp_stage(self, x, key, cutoff):
+        """Shared one-pole filter-state application: BedLayer's bed/midlayer
+        lowpass stages, StemLayer's stem lowpass stages, and the master
+        bus's send/air lowpass all key into the SAME self._lp_zi dict
+        (distinct string keys per stage), so this stays on AmbientTheme
+        rather than being owned by any one layer."""
         b, a = _onepole_lp_coeffs(cutoff, self.sr)
         zi = self._lp_zi.get(key)
         if zi is None or not _HAVE_SCIPY:
@@ -2877,30 +2938,6 @@ class AmbientTheme:
         y, zf = _sp_signal.lfilter(b, a, x, zi=zi)
         self._lp_zi[key] = zf
         return y
-
-    def _render_rain(self, dry, n, dt):
-        self.rain_layer.render_rain(dry, n, dt)
-
-    def _pink_noise_block(self, white):
-        return self.rain_layer.pink_noise_block(white)
-
-    def _render_air(self, n, dt):
-        return self.rain_layer.render_air(n, dt)
-
-    def _air_stage(self, x, key, b, a, nch):
-        return self.rain_layer.air_stage(x, key, b, a, nch)
-
-    def _render_bloom_scheduler(self, n, dt):
-        self.bloom_layer.render(n, dt)
-
-    def _bloom_pick_idx(self, rng, idle_mode):
-        return self.bloom_layer._pick_idx(rng, idle_mode)
-
-    def _maybe_fire_bloom_note(self):
-        self.bloom_layer._maybe_fire_note()
-
-    def _render_subagent_stems(self, dry, n, dt):
-        self.stem_layer.render(dry, n, dt)
 
     def _update_master_lowpass(self, dt):
         """Advance the L5 pressure/failure state and return this block's
@@ -2928,9 +2965,6 @@ class AmbientTheme:
         for ch in range(2):
             buf[:, ch] = self._apply_lp_stage(buf[:, ch], f"master_{tag}_{ch}", cutoff)
         return buf
-
-    def _render_subbass(self, n, dt):
-        return self.weather_layer.render(n, dt)
 
     def _advance(self, dt):
         self.t += dt
