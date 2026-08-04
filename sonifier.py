@@ -1704,6 +1704,229 @@ def _db_to_lin(db):
     return 10.0 ** (db / 20.0)
 
 
+class StemLayer:
+    """L4 subagent "stem" pads: shimmer-pad + low-fifth-drone voices that
+    fade in/out with subagent presence (brief section 5). Holds a back-
+    reference to the parent AmbientTheme (`theme`) rather than owning its
+    state independently -- several fields here (stem1_gain/stem2_gain/
+    stem_phase/stem_pan) are also read directly by AmbientTheme.handle_event
+    (SubagentStart/SubagentStop) and by tests, and _apply_lp_stage's filter
+    state (_lp_zi) is shared with BedLayer/the master bus, so splitting
+    ownership for real would mean duplicating or proxying that shared state
+    rather than removing coupling."""
+
+    def __init__(self, theme):
+        self.theme = theme
+
+    def render(self, dry, n, dt):
+        theme = self.theme
+        theme.stem1_gain.step(dt)
+        theme.stem2_gain.step(dt)
+        if theme.stem1_gain.value < 1e-4 and theme.stem2_gain.value < 1e-4:
+            return
+        t = np.arange(n) / theme.sr
+        if theme.stem1_gain.value > 1e-4:
+            # 3-voice detuned saw ("supersaw an octave above bed") through the
+            # same kind of 2-pole lowpass the L1 pad uses. The v2 builder's
+            # single NAIVE saw with no filter at all put a 32 dB spectral
+            # spike at 9.4 kHz (harmonic 36 of C4) into an otherwise -4 dB/oct
+            # mix -- audibly buzzy, and a section 7 item 5 failure whenever a
+            # subagent was running.
+            ph0 = theme.stem_phase[0]
+            freqs = ROOT_C4 * (2.0 ** (STEM_DETUNE_CENTS / 1200.0))
+            frac = np.mod(ph0 + t[:, None] * freqs[None, :], 1.0)
+            saw = np.sum(2.0 * frac - 1.0, axis=1) / len(freqs)
+            theme.stem_phase[0] = float(np.mod(ph0 + ROOT_C4 * n / theme.sr, 1.0))
+            saw = theme._apply_lp_stage(saw, "stem1_lp1", STEM_LP_HZ)
+            saw = theme._apply_lp_stage(saw, "stem1_lp2", STEM_LP_HZ)
+            gain = _db_to_lin(-32.0 + STEM_CAL_DB) * theme.stem1_gain.value
+            pan = theme.stem_pan
+            stereo = _mono_to_stereo(saw.astype(np.float64), pan=pan)
+            dry += stereo * gain
+        if theme.stem2_gain.value > 1e-4:
+            ph0 = theme.stem_phase[1]
+            phase = ph0 + ROOT_G2 * t / 1.0
+            sig = np.sin(2 * np.pi * phase)
+            theme.stem_phase[1] = float(np.mod(ph0 + ROOT_G2 * n / theme.sr, 1.0))
+            gain = _db_to_lin(-34.0 + STEM_CAL_DB) * theme.stem2_gain.value
+            stereo = _mono_to_stereo(sig.astype(np.float64), pan=-theme.stem_pan)
+            dry += stereo * gain
+
+
+class WeatherLayer:
+    """L5 context-pressure sub-bass drone (brief section 8). Holds a back-
+    reference to the parent AmbientTheme -- fill_smooth/fail_penalty_slew
+    (which this layer's target level depends on) are driven by the shared
+    master-lowpass update (AmbientTheme._update_master_lowpass), a mix-bus
+    concern that also touches non-weather buses (send/air), so it stays on
+    AmbientTheme rather than being duplicated here."""
+
+    def __init__(self, theme):
+        self.theme = theme
+
+    def render(self, n, dt):
+        theme = self.theme
+        f = theme.fill_smooth.value
+        target_db = -80.0
+        if f > 0.5:
+            # frac**0.7 rather than frac: with a linear ramp the drone is
+            # still 10 dB under its nominal level at fill 0.9, i.e. inaudible
+            # under the bed's own low-frequency rumble for the entire range a
+            # real session spends most of its time in.
+            frac = min(1.0, (f - 0.5) / 0.5) ** 0.7
+            # Range -55 -> -30 dBFS rather than -80 -> -30. The bottom 25 dB
+            # of the brief's range is spent below this mix's own 22-44 Hz
+            # rumble floor, so a linear ramp from -80 meant the drone only
+            # became audible in the last few percent of fill -- i.e. never,
+            # for the fill values a real session actually sits at.
+            target_db = -55.0 + frac * (-30.0 - (-55.0))
+        theme.subbass_gain.target = target_db
+        theme.subbass_gain.step(dt)
+        if theme.subbass_gain.value < -70.0:
+            return np.zeros((n, 2))
+        t = np.arange(n) / theme.sr
+        phase = theme.subbass_phase + ROOT_C1 * t / 1.0
+        sig = np.sin(2 * np.pi * phase) + 0.3 * np.sin(4 * np.pi * phase)
+        theme.subbass_phase = float(np.mod(theme.subbass_phase + ROOT_C1 * n / theme.sr, 1.0))
+        gain = _db_to_lin(theme.subbass_gain.value + SUBBASS_CAL_DB)
+        out = np.zeros((n, 2))
+        out[:, 0] = sig * gain
+        out[:, 1] = sig * gain
+        return out
+
+
+class BedLayer:
+    """L1 bed pad: supersaw + additive shimmer + v2.2 C3/G3 mid-register
+    warmth layer (brief section 2). Holds a back-reference to the parent
+    AmbientTheme -- draws from the SHARED render-thread RNG (theme._rng, in
+    the same call-order position render_block always called _render_bed
+    from) and its bed_level_db/bed_root_ratio are read by RainLayer's air
+    sub-layer and by note-spawning's embedding-cap calc, so this stays a
+    reach-back rather than independent ownership."""
+
+    def __init__(self, theme):
+        self.theme = theme
+
+    def _bed_target_db(self):
+        theme = self.theme
+        # v2.2 section 2 "bed presence = the control anchor": listener
+        # evidence was "dark cave"/"isolated"/"lost" -- a bed that all but
+        # disappears at idle reads as a void, not a machine quietly running.
+        # Active target raised so the bed is clearly audible under
+        # everything; idle raised too so it stays present on earphones.
+        if theme.holding_breath_until is not None and theme.t < theme.holding_breath_until:
+            return -33.0, 2.0
+        if theme.easing_after_stop_until is not None and theme.t < theme.easing_after_stop_until:
+            return -33.0, 5.0
+        since_start = theme.t - (theme.session_start_t or 0.0)
+        idle_dur = theme.t - theme.last_event_t
+        if since_start < 3.0:
+            return -30.0, 1.0
+        if idle_dur < 90.0:
+            return -30.0, 1.5
+        elif idle_dur < 600.0:
+            return -36.0, 10.0
+        else:
+            return -40.0, 15.0
+
+    def render(self, dry, n, dt):
+        theme = self.theme
+        sr = theme.sr
+        theme.bed_cutoff_oct = _ou_step(theme.bed_cutoff_oct, 0.0, BED_OU_TAU, BED_CUTOFF_OU_SIGMA_OCT, dt, theme._rng)
+        theme.bed_gain_db = _ou_step(theme.bed_gain_db, 0.0, BED_OU_TAU, BED_GAIN_OU_SIGMA_DB, dt, theme._rng)
+        for k in range(len(SHIMMER_HARMONICS)):
+            theme.shimmer_amp_x[k] = _ou_step(theme.shimmer_amp_x[k], 0.0, SHIMMER_OU_TAU, SHIMMER_OU_SIGMA, dt, theme._rng)
+
+        target_db, tau = self._bed_target_db()
+        theme.bed_level_db.target = target_db
+        theme.bed_level_db.tau = tau
+        theme.bed_level_db.step(dt)
+
+        t = np.arange(n) / sr
+        cutoff = max(150.0, min(BED_LP_MAX_HZ, BED_LP_BASE_HZ * (2.0 ** theme.bed_cutoff_oct)))
+
+        # Root shading: PostToolUseFailure pulls the bed root C -> A (I -> vi,
+        # BRIEF section 3 "the room got darker"), released on Stop / on the
+        # first successful tool use after the failure. Glided (Slew tau 3s) so
+        # it reads as a slow recoloring, never as a pitch bend.
+        theme.bed_root_ratio.target = _VI_RATIO if theme.bass_shaded_vi else 1.0
+        theme.bed_root_ratio.step(dt)
+        root_mult = theme.bed_root_ratio.value
+
+        # Vectorized supersaw: all 2 beds x 2 channels x 7 voices in one
+        # (n, 28) phase matrix + a single (28, 2) mixdown matmul. The
+        # per-voice python loop this replaces was ~0.5ms/block.
+        freqs = theme._bed_freqs * root_mult                    # (28,)
+        ph = theme.bed_phase.reshape(-1)                        # (28,)
+        frac = np.mod(ph[None, :] + t[:, None] * freqs[None, :], 1.0)
+        stereo_saw = (2.0 * frac - 1.0) @ theme._bed_mix        # (n, 2)
+        theme.bed_phase = np.mod(ph + freqs * n / sr, 1.0).reshape(theme.bed_phase.shape)
+
+        # Additive shimmer (tambura-style overtone walk). sus4 recoloring
+        # above fill 0.85 swaps the 3rd-harmonic G for a slightly flatter
+        # partial -- see _shimmer_ratios().
+        harm, gate = self._shimmer_ratios(dt)
+        amp = (1.0 / (harm * harm)) * gate * (
+            1.0 + 0.9 * np.clip(theme.shimmer_amp_x, -1.0, 1.0))
+        sfreq = harm * ROOT_C2 * root_mult
+        sph = theme.shimmer_phase                               # (K,2)
+        phase = sph[None, :, :] + t[:, None, None] * sfreq[None, :, None]
+        shimmer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * phase), amp * 0.5)
+        theme.shimmer_phase = np.mod(sph + (sfreq * n / sr)[:, None], 1.0)
+
+        bed_raw = stereo_saw * 0.6 + shimmer * 0.4
+
+        # 2nd-order lowpass (cascade of 2 one-poles => critically-damped-ish, Q<=1)
+        for ch in range(2):
+            key1, key2 = f"bed_lp1_{ch}", f"bed_lp2_{ch}"
+            col = bed_raw[:, ch]
+            col = theme._apply_lp_stage(col, key1, cutoff)
+            col = theme._apply_lp_stage(col, key2, cutoff)
+            bed_raw[:, ch] = col
+
+        gain = _db_to_lin(theme.bed_level_db.value + theme.bed_gain_db + BED_CAL_DB)
+        dry += bed_raw * gain
+
+        # v2.2 brightness lift (section 2): a soft, independent C3+G3 mid
+        # layer -- "bed gets a mid-register warm layer" -- to help raise the
+        # full-mix spectral centroid out of the 157 Hz "dark cave" register
+        # measured in v2, toward the [350, 1200] Hz v2.2 target band. Kept on
+        # its own gain trim (MIDLAYER_CAL_DB) and OU walk so it doesn't
+        # disturb the already-balanced low pad/shimmer stack.
+        for k in range(len(MIDLAYER_FREQS)):
+            theme.midlayer_amp_x[k] = _ou_step(
+                theme.midlayer_amp_x[k], 0.0, MIDLAYER_OU_TAU, MIDLAYER_OU_SIGMA, dt, theme._rng)
+        mid_freqs = MIDLAYER_FREQS * root_mult
+        mid_amp = 1.0 + 0.9 * np.clip(theme.midlayer_amp_x, -1.0, 1.0)
+        mph = theme.midlayer_phase                              # (K,2)
+        mphase = mph[None, :, :] + t[:, None, None] * mid_freqs[None, :, None]
+        midlayer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * mphase), mid_amp * 0.5)
+        theme.midlayer_phase = np.mod(mph + (mid_freqs * n / sr)[:, None], 1.0)
+        for ch in range(2):
+            midlayer[:, ch] = theme._apply_lp_stage(midlayer[:, ch], f"midlayer_lp_{ch}",
+                                                   MIDLAYER_LP_HZ)
+        mid_gain = _db_to_lin(theme.bed_level_db.value + MIDLAYER_CAL_DB)
+        dry += midlayer * mid_gain
+
+    def _shimmer_ratios(self, dt):
+        """Harmonic ratios for the additive layer, including the two glided
+        recolorings from the brief: sus4 above fill 0.85 (the 5th slides to a
+        4th) and sus2 during a Notification hold (a D partial fades in).
+        Ratios are glided rather than switched so the sine phases stay
+        continuous -- a hard ratio switch would click."""
+        theme = self.theme
+        theme.sus4_amt.target = 1.0 if theme.fill_smooth.value > 0.85 else 0.0
+        theme.sus4_amt.step(dt)
+        active_sus2 = theme.sus2_until is not None and theme.t < theme.sus2_until
+        theme.sus2_amt.target = 1.0 if active_sus2 else 0.0
+        theme.sus2_amt.step(dt)
+        r = np.array(SHIMMER_HARMONICS, dtype=np.float64)
+        r[SHIMMER_FIFTH_SLOT] = 3.0 + theme.sus4_amt.value * (SHIMMER_SUS4_RATIO - 3.0)
+        gate = np.ones(len(SHIMMER_HARMONICS))
+        gate[SHIMMER_SUS2_SLOT] = theme.sus2_amt.value
+        return r, gate
+
+
 class AmbientTheme:
     """v2 default sound: generative ambient layers (BRIEF-v2.md). Exposes
     the same small interface as GeigerTheme: handle_event(evt), set_pressure
@@ -1802,6 +2025,7 @@ class AmbientTheme:
         # render_block fault handler zeroes the block) instead of erroring.
         self.midlayer_phase = self._rng.random((len(MIDLAYER_FREQS), 2))
         self.midlayer_amp_x = np.zeros(len(MIDLAYER_FREQS))
+        self.bed_layer = BedLayer(self)
 
         # L2 rain state
         self.drop_bank = _build_drop_bank(self._rng, sr)
@@ -1846,6 +2070,7 @@ class AmbientTheme:
         self.stem_phase = self._rng.random(2)
         self.stem_pan = 0.3
         self._stem_pan_toggle = False
+        self.stem_layer = StemLayer(self)
 
         # L5 context-pressure weather
         self.fill = 0.0
@@ -1862,6 +2087,7 @@ class AmbientTheme:
         self.master_lp_cutoff = Slew(6000.0, tau=0.5)
         self.fail_penalty_hz = 0.0
         self.fail_penalty_slew = Slew(0.0, tau=1.5)
+        self.weather_layer = WeatherLayer(self)
 
         # Voice pool (drops + bloom notes + gestures). `voices` is owned
         # exclusively by the render/audio thread. Everything that wants to
@@ -2376,121 +2602,8 @@ class AmbientTheme:
         self._duck_gain_z = float(y[-1])
         return y[:, None]
 
-    def _bed_target_db(self):
-        # v2.2 section 2 "bed presence = the control anchor": listener
-        # evidence was "dark cave"/"isolated"/"lost" -- a bed that all but
-        # disappears at idle reads as a void, not a machine quietly running.
-        # Active target raised so the bed is clearly audible under
-        # everything; idle raised too so it stays present on earphones.
-        if self.holding_breath_until is not None and self.t < self.holding_breath_until:
-            return -33.0, 2.0
-        if self.easing_after_stop_until is not None and self.t < self.easing_after_stop_until:
-            return -33.0, 5.0
-        since_start = self.t - (self.session_start_t or 0.0)
-        idle_dur = self.t - self.last_event_t
-        if since_start < 3.0:
-            return -30.0, 1.0
-        if idle_dur < 90.0:
-            return -30.0, 1.5
-        elif idle_dur < 600.0:
-            return -36.0, 10.0
-        else:
-            return -40.0, 15.0
-
     def _render_bed(self, dry, n, dt):
-        sr = self.sr
-        self.bed_cutoff_oct = _ou_step(self.bed_cutoff_oct, 0.0, BED_OU_TAU, BED_CUTOFF_OU_SIGMA_OCT, dt, self._rng)
-        self.bed_gain_db = _ou_step(self.bed_gain_db, 0.0, BED_OU_TAU, BED_GAIN_OU_SIGMA_DB, dt, self._rng)
-        for k in range(len(SHIMMER_HARMONICS)):
-            self.shimmer_amp_x[k] = _ou_step(self.shimmer_amp_x[k], 0.0, SHIMMER_OU_TAU, SHIMMER_OU_SIGMA, dt, self._rng)
-
-        target_db, tau = self._bed_target_db()
-        self.bed_level_db.target = target_db
-        self.bed_level_db.tau = tau
-        self.bed_level_db.step(dt)
-
-        t = np.arange(n) / sr
-        cutoff = max(150.0, min(BED_LP_MAX_HZ, BED_LP_BASE_HZ * (2.0 ** self.bed_cutoff_oct)))
-
-        # Root shading: PostToolUseFailure pulls the bed root C -> A (I -> vi,
-        # BRIEF section 3 "the room got darker"), released on Stop / on the
-        # first successful tool use after the failure. Glided (Slew tau 3s) so
-        # it reads as a slow recoloring, never as a pitch bend.
-        self.bed_root_ratio.target = _VI_RATIO if self.bass_shaded_vi else 1.0
-        self.bed_root_ratio.step(dt)
-        root_mult = self.bed_root_ratio.value
-
-        # Vectorized supersaw: all 2 beds x 2 channels x 7 voices in one
-        # (n, 28) phase matrix + a single (28, 2) mixdown matmul. The
-        # per-voice python loop this replaces was ~0.5ms/block.
-        freqs = self._bed_freqs * root_mult                    # (28,)
-        ph = self.bed_phase.reshape(-1)                        # (28,)
-        frac = np.mod(ph[None, :] + t[:, None] * freqs[None, :], 1.0)
-        stereo_saw = (2.0 * frac - 1.0) @ self._bed_mix        # (n, 2)
-        self.bed_phase = np.mod(ph + freqs * n / sr, 1.0).reshape(self.bed_phase.shape)
-
-        # Additive shimmer (tambura-style overtone walk). sus4 recoloring
-        # above fill 0.85 swaps the 3rd-harmonic G for a slightly flatter
-        # partial -- see _shimmer_ratios().
-        harm, gate = self._shimmer_ratios(dt)
-        amp = (1.0 / (harm * harm)) * gate * (
-            1.0 + 0.9 * np.clip(self.shimmer_amp_x, -1.0, 1.0))
-        sfreq = harm * ROOT_C2 * root_mult
-        sph = self.shimmer_phase                               # (K,2)
-        phase = sph[None, :, :] + t[:, None, None] * sfreq[None, :, None]
-        shimmer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * phase), amp * 0.5)
-        self.shimmer_phase = np.mod(sph + (sfreq * n / sr)[:, None], 1.0)
-
-        bed_raw = stereo_saw * 0.6 + shimmer * 0.4
-
-        # 2nd-order lowpass (cascade of 2 one-poles => critically-damped-ish, Q<=1)
-        for ch in range(2):
-            key1, key2 = f"bed_lp1_{ch}", f"bed_lp2_{ch}"
-            col = bed_raw[:, ch]
-            col = self._apply_lp_stage(col, key1, cutoff)
-            col = self._apply_lp_stage(col, key2, cutoff)
-            bed_raw[:, ch] = col
-
-        gain = _db_to_lin(self.bed_level_db.value + self.bed_gain_db + BED_CAL_DB)
-        dry += bed_raw * gain
-
-        # v2.2 brightness lift (section 2): a soft, independent C3+G3 mid
-        # layer -- "bed gets a mid-register warm layer" -- to help raise the
-        # full-mix spectral centroid out of the 157 Hz "dark cave" register
-        # measured in v2, toward the [350, 1200] Hz v2.2 target band. Kept on
-        # its own gain trim (MIDLAYER_CAL_DB) and OU walk so it doesn't
-        # disturb the already-balanced low pad/shimmer stack.
-        for k in range(len(MIDLAYER_FREQS)):
-            self.midlayer_amp_x[k] = _ou_step(
-                self.midlayer_amp_x[k], 0.0, MIDLAYER_OU_TAU, MIDLAYER_OU_SIGMA, dt, self._rng)
-        mid_freqs = MIDLAYER_FREQS * root_mult
-        mid_amp = 1.0 + 0.9 * np.clip(self.midlayer_amp_x, -1.0, 1.0)
-        mph = self.midlayer_phase                              # (K,2)
-        mphase = mph[None, :, :] + t[:, None, None] * mid_freqs[None, :, None]
-        midlayer = np.einsum("nkc,k->nc", np.sin(2 * np.pi * mphase), mid_amp * 0.5)
-        self.midlayer_phase = np.mod(mph + (mid_freqs * n / sr)[:, None], 1.0)
-        for ch in range(2):
-            midlayer[:, ch] = self._apply_lp_stage(midlayer[:, ch], f"midlayer_lp_{ch}",
-                                                   MIDLAYER_LP_HZ)
-        mid_gain = _db_to_lin(self.bed_level_db.value + MIDLAYER_CAL_DB)
-        dry += midlayer * mid_gain
-
-    def _shimmer_ratios(self, dt):
-        """Harmonic ratios for the additive layer, including the two glided
-        recolorings from the brief: sus4 above fill 0.85 (the 5th slides to a
-        4th) and sus2 during a Notification hold (a D partial fades in).
-        Ratios are glided rather than switched so the sine phases stay
-        continuous -- a hard ratio switch would click."""
-        self.sus4_amt.target = 1.0 if self.fill_smooth.value > 0.85 else 0.0
-        self.sus4_amt.step(dt)
-        active_sus2 = self.sus2_until is not None and self.t < self.sus2_until
-        self.sus2_amt.target = 1.0 if active_sus2 else 0.0
-        self.sus2_amt.step(dt)
-        r = np.array(SHIMMER_HARMONICS, dtype=np.float64)
-        r[SHIMMER_FIFTH_SLOT] = 3.0 + self.sus4_amt.value * (SHIMMER_SUS4_RATIO - 3.0)
-        gate = np.ones(len(SHIMMER_HARMONICS))
-        gate[SHIMMER_SUS2_SLOT] = self.sus2_amt.value
-        return r, gate
+        self.bed_layer.render(dry, n, dt)
 
     def _apply_lp_stage(self, x, key, cutoff):
         b, a = _onepole_lp_coeffs(cutoff, self.sr)
@@ -2717,37 +2830,7 @@ class AmbientTheme:
                 self._last_bloom_pool_idx = idx2
 
     def _render_subagent_stems(self, dry, n, dt):
-        self.stem1_gain.step(dt)
-        self.stem2_gain.step(dt)
-        if self.stem1_gain.value < 1e-4 and self.stem2_gain.value < 1e-4:
-            return
-        t = np.arange(n) / self.sr
-        if self.stem1_gain.value > 1e-4:
-            # 3-voice detuned saw ("supersaw an octave above bed") through the
-            # same kind of 2-pole lowpass the L1 pad uses. The v2 builder's
-            # single NAIVE saw with no filter at all put a 32 dB spectral
-            # spike at 9.4 kHz (harmonic 36 of C4) into an otherwise -4 dB/oct
-            # mix -- audibly buzzy, and a section 7 item 5 failure whenever a
-            # subagent was running.
-            ph0 = self.stem_phase[0]
-            freqs = ROOT_C4 * (2.0 ** (STEM_DETUNE_CENTS / 1200.0))
-            frac = np.mod(ph0 + t[:, None] * freqs[None, :], 1.0)
-            saw = np.sum(2.0 * frac - 1.0, axis=1) / len(freqs)
-            self.stem_phase[0] = float(np.mod(ph0 + ROOT_C4 * n / self.sr, 1.0))
-            saw = self._apply_lp_stage(saw, "stem1_lp1", STEM_LP_HZ)
-            saw = self._apply_lp_stage(saw, "stem1_lp2", STEM_LP_HZ)
-            gain = _db_to_lin(-32.0 + STEM_CAL_DB) * self.stem1_gain.value
-            pan = self.stem_pan
-            stereo = _mono_to_stereo(saw.astype(np.float64), pan=pan)
-            dry += stereo * gain
-        if self.stem2_gain.value > 1e-4:
-            ph0 = self.stem_phase[1]
-            phase = ph0 + ROOT_G2 * t / 1.0
-            sig = np.sin(2 * np.pi * phase)
-            self.stem_phase[1] = float(np.mod(ph0 + ROOT_G2 * n / self.sr, 1.0))
-            gain = _db_to_lin(-34.0 + STEM_CAL_DB) * self.stem2_gain.value
-            stereo = _mono_to_stereo(sig.astype(np.float64), pan=-self.stem_pan)
-            dry += stereo * gain
+        self.stem_layer.render(dry, n, dt)
 
     def _update_master_lowpass(self, dt):
         """Advance the L5 pressure/failure state and return this block's
@@ -2777,33 +2860,7 @@ class AmbientTheme:
         return buf
 
     def _render_subbass(self, n, dt):
-        f = self.fill_smooth.value
-        target_db = -80.0
-        if f > 0.5:
-            # frac**0.7 rather than frac: with a linear ramp the drone is
-            # still 10 dB under its nominal level at fill 0.9, i.e. inaudible
-            # under the bed's own low-frequency rumble for the entire range a
-            # real session spends most of its time in.
-            frac = min(1.0, (f - 0.5) / 0.5) ** 0.7
-            # Range -55 -> -30 dBFS rather than -80 -> -30. The bottom 25 dB
-            # of the brief's range is spent below this mix's own 22-44 Hz
-            # rumble floor, so a linear ramp from -80 meant the drone only
-            # became audible in the last few percent of fill -- i.e. never,
-            # for the fill values a real session actually sits at.
-            target_db = -55.0 + frac * (-30.0 - (-55.0))
-        self.subbass_gain.target = target_db
-        self.subbass_gain.step(dt)
-        if self.subbass_gain.value < -70.0:
-            return np.zeros((n, 2))
-        t = np.arange(n) / self.sr
-        phase = self.subbass_phase + ROOT_C1 * t / 1.0
-        sig = np.sin(2 * np.pi * phase) + 0.3 * np.sin(4 * np.pi * phase)
-        self.subbass_phase = float(np.mod(self.subbass_phase + ROOT_C1 * n / self.sr, 1.0))
-        gain = _db_to_lin(self.subbass_gain.value + SUBBASS_CAL_DB)
-        out = np.zeros((n, 2))
-        out[:, 0] = sig * gain
-        out[:, 1] = sig * gain
-        return out
+        return self.weather_layer.render(n, dt)
 
     def _advance(self, dt):
         self.t += dt
