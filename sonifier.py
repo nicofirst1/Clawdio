@@ -75,15 +75,29 @@ MAX_BODY_BYTES = 1 << 20  # 1 MiB cap on an HTTP POST /event body
 MAX_ACTIVE_CHIMES = 24  # concurrent one-shot chimes; excess is dropped
 HTTP_READ_TIMEOUT = 5.0  # seconds, per-connection socket timeout
 
-READ_TOOLS = {"Read", "Glob", "Grep", "WebFetch", "WebSearch"}
-WRITE_TOOLS = {"Write", "Edit", "NotebookEdit"}
-EXCLUDED_EXEC_TOOLS = {"Task", "Agent"}
-READ_BASH_CMDS = {"ls", "cat", "grep", "rg", "find", "head", "tail", "jq"}
-
 # Tool timbre classes
 CLASS_READ = "read"
 CLASS_WRITE = "write"
 CLASS_EXEC = "exec"
+
+# classify() decision table: tool_name -> classification, or None for tools
+# that shouldn't produce a click/drop at all (Task/Agent spawn subagent
+# chimes instead). "Bash" isn't in here -- it's classified separately by
+# _classify_bash_command below.
+TOOL_CLASS = {
+    "Read": CLASS_READ,
+    "Glob": CLASS_READ,
+    "Grep": CLASS_READ,
+    "WebFetch": CLASS_READ,
+    "WebSearch": CLASS_READ,
+    "Write": CLASS_WRITE,
+    "Edit": CLASS_WRITE,
+    "NotebookEdit": CLASS_WRITE,
+    "Task": None,
+    "Agent": None,
+}
+READ_BASH_CMDS = {"ls", "cat", "grep", "rg", "find", "head", "tail", "jq"}
+GIT_READ_SUBCOMMANDS = {"status", "log", "diff", "show", "branch", "blame"}
 
 TIMBRE = {
     CLASS_READ: dict(center=2200.0, q=6.0, decay=0.0035, amp=0.55),
@@ -156,6 +170,24 @@ def load_config() -> dict:
 # Tool classification
 # --------------------------------------------------------------------------
 
+def _classify_bash_command(cmd):
+    """Classify a Bash tool's shell command string into 'read' | 'exec'."""
+    if not isinstance(cmd, str):
+        cmd = str(cmd)
+    first = cmd.strip().split()[0] if cmd.strip() else ""
+    # strip a leading path component, e.g. /usr/bin/grep -> grep
+    first = first.rsplit("/", 1)[-1]
+    if first in READ_BASH_CMDS:
+        return CLASS_READ
+    if first == "git":
+        parts = cmd.strip().split()
+        sub = parts[1] if len(parts) > 1 else ""
+        if sub in GIT_READ_SUBCOMMANDS:
+            return CLASS_READ
+        return CLASS_EXEC
+    return CLASS_EXEC
+
+
 def classify(tool_name, tool_input=None):
     """Classify a tool invocation into 'read' | 'write' | 'exec' | None.
 
@@ -165,30 +197,11 @@ def classify(tool_name, tool_input=None):
     """
     if not tool_name or not isinstance(tool_name, str):
         return None
-    if tool_name in EXCLUDED_EXEC_TOOLS:
-        return None
-    if tool_name in READ_TOOLS:
-        return CLASS_READ
-    if tool_name in WRITE_TOOLS:
-        return CLASS_WRITE
+    if tool_name in TOOL_CLASS:
+        return TOOL_CLASS[tool_name]
     if tool_name == "Bash":
-        cmd = ""
-        if isinstance(tool_input, dict):
-            cmd = tool_input.get("command") or ""
-        if not isinstance(cmd, str):
-            cmd = str(cmd)
-        first = cmd.strip().split()[0] if cmd.strip() else ""
-        # strip a leading path component, e.g. /usr/bin/grep -> grep
-        first = first.rsplit("/", 1)[-1]
-        if first in READ_BASH_CMDS:
-            return CLASS_READ
-        if first == "git":
-            parts = cmd.strip().split()
-            sub = parts[1] if len(parts) > 1 else ""
-            if sub in ("status", "log", "diff", "show", "branch", "blame"):
-                return CLASS_READ
-            return CLASS_EXEC
-        return CLASS_EXEC
+        cmd = tool_input.get("command") or "" if isinstance(tool_input, dict) else ""
+        return _classify_bash_command(cmd)
     # Unknown tool name: fall back to exec-ish default class so it's audible.
     return CLASS_EXEC
 
