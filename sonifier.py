@@ -951,8 +951,15 @@ ACTIVITY_BUMP = {CLASS_READ: 0.26, CLASS_WRITE: 0.44, CLASS_EXEC: 0.46}
 DROP_RATE_MIN = 0.0          # R_min: idle is event-driven only, no floor hiss
 DROP_RATE_CAP = 6.0          # R_cap: discrete drops/s (auditory counting breaks ~4-6/s)
 DROP_RATE_LOG_BASE = 10.0    # log(1+9a)/log(10): a=1 -> exactly R_cap
-DROP_MIN_GAP_S = 0.150       # pacing floor: no two onsets (any source) closer than this
-BURST_COALESCE_WINDOW_S = 0.250   # inter-onset < this merges into 1 weighted drop
+# v2.3 half-density (blind round 2: halving density won the same-session blind
+# ranking against v2 and v2.2, though timbre -- not density -- turned out to
+# be the dominant complaint; see research/BRIEF-v2.3.md). These three knobs
+# replicate eval/make_clips.py's "c3_v22_half_density" Block C variant exactly:
+# pacing floor and coalescing window both doubled, rate map scaled 0.5x
+# (DROP_RATE_SCALE below, applied in _drop_rate_from_activity).
+DROP_MIN_GAP_S = 0.300       # pacing floor: no two onsets (any source) closer than this (v2.2: 0.150)
+BURST_COALESCE_WINDOW_S = 0.500   # inter-onset < this merges into 1 weighted drop (v2.2: 0.250)
+DROP_RATE_SCALE = 0.5        # v2.3: half-density scale on the whole compressive map (v2.2: 1.0)
 BURST_COALESCE_STEP_DB = 2.5      # weight added per merged (suppressed) event
 BURST_COALESCE_MAX_DB = 7.0       # cap on accumulated coalescing weight
 RATE_SLEW_TAU_S = 2.2        # >= 2s per brief: rate parameter itself is slewed
@@ -970,10 +977,11 @@ MS_MAX_SIDE_OVER_MID = 0.5    # brief section 5: S <= 0.5*M
 
 def _drop_rate_from_activity(a):
     """Compressive (log) discrete-drop rate map, brief section 1:
-    rate = R_min + (R_cap - R_min) * log(1 + 9a) / log(10), a in [0,1]."""
+    rate = R_min + (R_cap - R_min) * log(1 + 9a) / log(10), a in [0,1],
+    scaled by DROP_RATE_SCALE (v2.3 half-density: 0.5x)."""
     a = max(0.0, min(1.0, a))
-    return DROP_RATE_MIN + (DROP_RATE_CAP - DROP_RATE_MIN) * (
-        math.log(1.0 + 9.0 * a) / math.log(DROP_RATE_LOG_BASE))
+    return DROP_RATE_SCALE * (DROP_RATE_MIN + (DROP_RATE_CAP - DROP_RATE_MIN) * (
+        math.log(1.0 + 9.0 * a) / math.log(DROP_RATE_LOG_BASE)))
 
 
 def _ou_step(x, mean, tau, sigma, dt, rng):
@@ -1640,6 +1648,11 @@ class AmbientConfig:
     AIR_CAL_DB: float = AIR_CAL_DB
     DROP_CAL_DB: float = DROP_CAL_DB
     DROP_AMP_SPREAD_DB: float = DROP_AMP_SPREAD_DB
+    # v2.3 half-density (blind round 2 c3 knobs -- see _drop_rate_from_activity
+    # and research/BRIEF-v2.3.md)
+    DROP_MIN_GAP_S: float = DROP_MIN_GAP_S
+    BURST_COALESCE_WINDOW_S: float = BURST_COALESCE_WINDOW_S
+    DROP_RATE_SCALE: float = DROP_RATE_SCALE
     NOTE_EMBED_CAP_DB: float = NOTE_EMBED_CAP_DB
     NOTE_EMBED_CAP_IDLE_DB: float = NOTE_EMBED_CAP_IDLE_DB
     KNOCK_EMBED_CAP_DB: float = KNOCK_EMBED_CAP_DB

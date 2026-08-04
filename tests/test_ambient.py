@@ -269,7 +269,12 @@ def test_activity_high_vs_low_render_differ():
                     dispatched[0] += 1
                 return fired
             state.rain.dispatch_drop = counted
-        n_blocks = int(math.ceil(8.0 * SR / BLOCK))
+        # v2.3 half-density (DROP_MIN_GAP_S 0.30s, rate cap halved to 3/s, and
+        # a >=2.2s rate slew before that cap is even reached) needs a longer
+        # window than v2.2's 8s to let the high-activity dispatch count pull
+        # ahead of the low-activity one -- 8s wasn't enough headroom above
+        # the new floor/slew for both renders to differ reliably.
+        n_blocks = int(math.ceil(16.0 * SR / BLOCK))
         chunks = []
         for _ in range(n_blocks):
             state.activity = activity
