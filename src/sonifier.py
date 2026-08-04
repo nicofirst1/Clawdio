@@ -41,7 +41,6 @@ import time
 import wave
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import socketserver
 import socket
 
 import numpy as np
@@ -982,8 +981,14 @@ MS_MAX_SIDE_OVER_MID = 0.5    # brief section 5: S <= 0.5*M
 # the post-Stop "waiting for user" window: deeper/longer bed dip than the
 # ordinary idle ladder, and a much sparser bloom rate.
 DONE_CADENCE_MODES = ("v22", "v24")
-SETTLED_HOLD_S = 20.0          # how long after Stop the bed stays "settled" before
-                                # falling back to the ordinary idle ladder
+SETTLED_HOLD_S = 20.0          # v22 only: fixed hard timeout before falling back to
+                                # the ordinary idle ladder (legacy behavior, unchanged).
+                                # v24 does NOT time out on this -- settled instead holds
+                                # for as long as the agent stays idle since Stop, and
+                                # only exits when a new event fires (see
+                                # BedLayer._bed_target_db). SETTLED_HOLD_S still sets the
+                                # marker value used to detect "no event since Stop" for
+                                # v24, it just isn't a v24 cutoff anymore.
 SETTLED_BED_DB = -38.0         # settled bed target (v2.2's post-Stop hold was -33,
                                 # then rose back to -30 after only 6s -- the opposite
                                 # of "quieter/waiting"); -38 sits between the >90s and
@@ -2080,13 +2085,20 @@ class BedLayer:
         # everything; idle raised too so it stays present on earphones.
         if self.holding_breath_until is not None and t < self.holding_breath_until:
             return -33.0, 2.0
-        if self.easing_after_stop_until is not None and t < self.easing_after_stop_until:
-            if self.done_cadence == "v22":
+        if self.done_cadence == "v22":
+            if self.easing_after_stop_until is not None and t < self.easing_after_stop_until:
                 return -33.0, 5.0
+        elif self.easing_after_stop_until is not None and last_event_t < self.easing_after_stop_until:
             # v2.4 "settled" idle (research/BRIEF-v2.4.md): deeper and longer
             # than the legacy 6s/-33dB hold, which fell back to the ordinary
             # idle ladder (-30dB, same as "idle but recently working") after
             # only 6s -- the opposite of a distinct "waiting for you" state.
+            # Gated on last_event_t (not a hard `t <` timeout): a fixed timer
+            # that falls through to the LOUDER idle ladder is the same
+            # "gets louder while waiting" defect this cadence work fixed
+            # elsewhere, just delayed to t=SETTLED_HOLD_S post-Stop. Settled
+            # now holds for as long as the agent stays idle since Stop, and
+            # only exits when a genuinely new event advances last_event_t.
             return SETTLED_BED_DB, SETTLED_BED_TAU_S
         since_start = t - (session_start_t or 0.0)
         idle_dur = t - last_event_t
@@ -2638,16 +2650,31 @@ class AmbientTheme:
     the same small interface as GeigerTheme: handle_event(evt), set_pressure
     (fill), render_block(n) -> (n,2) float32.
 
-    Thread-safety mirrors GeigerTheme/v1: `_rng` is owned exclusively by the
-    render/audio thread (continuous layers: bed OU walks, rain Poisson bed,
-    bloom scheduler). `_ingress_rng` is a separate stream used only inside
-    handle_event (HTTP/UDP ingress threads in live mode) to synthesize
-    ready-made one-shot buffers (drops, gestures) that are then appended to
-    plain python lists -- the same "ingress thread only ever list.append"
-    pattern v1 uses for chimes, so no locks are needed in the audio
-    callback. In --render mode handle_event and render_block run on the same
-    thread, so this split doesn't affect determinism (both generators are
-    seeded from `seed` and called in a fixed, seed-only-dependent order).
+    Thread-safety mirrors GeigerTheme/v1 for the RNGs only: `_rng` is owned
+    exclusively by the render/audio thread (continuous layers: bed OU walks,
+    rain Poisson bed, bloom scheduler). `_ingress_rng` is a separate stream
+    used only inside handle_event (HTTP/UDP ingress threads in live mode) to
+    synthesize ready-made one-shot buffers (drops, gestures) that are then
+    appended to plain python lists -- the same "ingress thread only ever
+    list.append" pattern v1 uses for chimes, so the RNG streams themselves
+    never need locks. In --render mode handle_event and render_block run on
+    the same thread, so this split doesn't affect determinism (both
+    generators are seeded from `seed` and called in a fixed, seed-only-
+    dependent order).
+
+    # ponytail: that RNG split is the only thing actually guarded here.
+    # handle_event also directly reads/writes plain scalar fields (self.t,
+    # self.activity, fail_penalty_hz, easing_after_stop_until, etc.) that
+    # the audio callback thread reads/writes every block, with no lock.
+    # CPython's GIL makes each individual attribute get/set atomic, so this
+    # doesn't crash or corrupt memory, but multi-step read-modify-write
+    # sequences across those fields are NOT atomic (e.g. a note's delay
+    # computed from a self.t that changes mid-computation, or a lost
+    # `self.activity +=` under concurrent HTTP requests racing the audio
+    # thread). Ceiling: best-effort/GIL-only, not truly atomic. Upgrade path
+    # if this ever bites: a lock around the shared-scalar read/write
+    # sections in handle_event and render_block, accepting the audio-
+    # callback latency risk that a lock in that path implies.
     """
 
     def __init__(self, sr=SAMPLE_RATE, volume=0.5, mute=False, clicks_enabled=True,
@@ -3008,10 +3035,14 @@ class AmbientTheme:
             self.stem.render(send, n, dt)
             # v2.4: bed's own settled-until window (post-Stop, "v24" mode
             # only) also gates the bloom rate -- see BloomLayer.render's
-            # `settled` docstring note.
+            # `settled` docstring note. Mirrors BedLayer._bed_target_db's
+            # exit condition exactly (last_event_t, not a hard `t <` cutoff)
+            # so bed and bloom never fall out of settled at different times
+            # -- a bed/bloom mismatch here is the original v2.2 "waking up"
+            # defect this cadence work fixes.
             settled = (self.bed.done_cadence != "v22"
                       and self.bed.easing_after_stop_until is not None
-                      and self.t < self.bed.easing_after_stop_until)
+                      and self.last_event_t < self.bed.easing_after_stop_until)
             self.activity_slow = self.bloom.render(n, dt, self.t, self.activity,
                                                     self.activity_slow, settled=settled)
             # "Room pause" duck (see _duck_block): applied to the SUSTAINED
