@@ -103,7 +103,7 @@ The appliance/automotive industry has quantitative machinery for exactly our pro
 
 #### 2.7 DSP recipes (all pure numpy/scipy, benchmarked in-container)
 
-Complete parameterized recipes were collected and measured: supersaw pads (±7 cents detune), 2-op FM electric piano (ratio 1:1, the DX7 heritage; velocity → modulation index for played-feel), modal synthesis for wooden percussion (marimba ratios 1:3.9:9.2; woodblock 1:1.47:2.09:2.56), rain as pre-rendered Poisson-timed grains + pink-noise bed (Paul Kellet filter), wind/water via Ornstein–Uhlenbeck-walked bandpass noise, and **Freeverb** with its exact classic tuning constants as the shared room. The full v2 scene renders in ~1 ms per 256-sample block (~20% of one core) — real-time viable with headroom. (Full constants live in research/BRIEF-v2.md / the engine source.)
+Complete parameterized recipes were collected and measured: supersaw pads (±7 cents detune), 2-op FM electric piano (ratio 1:1, the DX7 heritage; velocity → modulation index for played-feel), modal synthesis for wooden percussion (marimba ratios 1:3.9:9.2; woodblock 1:1.47:2.09:2.56), rain as pre-rendered Poisson-timed grains + pink-noise bed (Paul Kellet filter), wind/water via Ornstein–Uhlenbeck-walked bandpass noise, and **Freeverb** with its exact classic tuning constants as the shared room. The full v2 scene renders in ~1 ms per 256-sample block (~20% of one core) — real-time viable with headroom. (Full constants live in research/BRIEF-v2.md / the engine source (`src/sonifier.py`).)
 
 ### Phase C — Pacing & evaluation (research passes 8–9)
 

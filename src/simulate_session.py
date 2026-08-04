@@ -8,13 +8,13 @@ Two modes:
 1. Live fire (default): sends each event as a UDP datagram (optionally HTTP
    POST /event with --http) to 127.0.0.1:<port>, real-time paced according
    to each event's scheduled offset and --speed. Good for demoing/testing
-   the running daemon (`python3 sonifier.py`) without needing a real Claude
-   Code session.
+   the running daemon (`python3 src/sonifier.py`, run from the repo root)
+   without needing a real Claude Code session.
 
 2. --emit-jsonl FILE: instead of firing events live, writes the same event
    sequence as a render-script (one JSON object per line: {"t": <sec>,
    "event": {<hook JSON>}}), consumable by:
-       python3 sonifier.py --render FILE out.wav
+       python3 src/sonifier.py --render FILE out.wav
 
 Stdlib only (uses urllib for --http, socket for UDP, json, argparse, time).
 
@@ -23,7 +23,7 @@ of Read/Grep pre/post pairs -> Write/Edit activity -> a Bash test run that
 fails (PostToolUseFailure) -> a retry that succeeds -> SubagentStart with
 parallel tool events + SubagentStop -> PreCompact -> a ContextPressure ramp
 0.3 -> 0.9 -> Stop. Total span is controlled by TOTAL_SPAN_S (~60s by
-default; demo-session.jsonl uses a longer, denser variant, see
+default; demos/demo-session.jsonl uses a longer, denser variant, see
 build_demo_timeline()).
 """
 

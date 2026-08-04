@@ -17,7 +17,7 @@ import sys
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 import sonifier  # noqa: E402
 
@@ -328,7 +328,7 @@ def test_activity_high_vs_low_render_differ():
 
 def test_no_nan_full_demo_render(tmp_path):
     events_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "demo-session-v2.jsonl"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "demos", "demo-session-v2.jsonl"
     )
     out_path = tmp_path / "v2.wav"
     old = os.environ.get("SONIFIER_THEME")

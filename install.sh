@@ -86,7 +86,7 @@ say "  python3: OK ($PY_VER)"
 if python3 -c 'import numpy' >/dev/null 2>&1; then
     say "  numpy: OK"
 else
-    say "  numpy: MISSING (required by sonifier.py, including offline --render)."
+    say "  numpy: MISSING (required by src/sonifier.py, including offline --render)."
     say "         Install with: pip install numpy --break-system-packages"
     say "         (or: pip install numpy   inside a venv)"
 fi
@@ -267,7 +267,7 @@ fi
 say ""
 say "-- done --"
 say "Test the daemon manually with:"
-say "  python3 $SCRIPT_DIR/sonifier.py --check"
+say "  python3 $SCRIPT_DIR/src/sonifier.py --check"
 say "Simulate a session without needing Claude Code at all:"
-say "  python3 $SCRIPT_DIR/simulate_session.py --speed 4"
-say "  python3 $SCRIPT_DIR/sonifier.py --render $SCRIPT_DIR/demo-session.jsonl /tmp/demo.wav"
+say "  python3 $SCRIPT_DIR/src/simulate_session.py --speed 4"
+say "  python3 $SCRIPT_DIR/src/sonifier.py --render $SCRIPT_DIR/demos/demo-session.jsonl /tmp/demo.wav"

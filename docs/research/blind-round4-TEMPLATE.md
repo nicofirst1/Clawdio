@@ -43,4 +43,4 @@ TBD once results are in. Specifically check:
 
 ## Decision → v2.3 (or v2.3.1)
 
-TBD. If a candidate other than woodblock wins clearly, change `AmbientConfig.drop_timbre`'s default in `sonifier.py` and update `research/BRIEF-v2.3.md` accordingly — do not silently leave the shipped default out of sync with what the blind test picked.
+TBD. If a candidate other than woodblock wins clearly, change `AmbientConfig.drop_timbre`'s default in `src/sonifier.py` and update `research/BRIEF-v2.3.md` accordingly — do not silently leave the shipped default out of sync with what the blind test picked.

@@ -13,7 +13,7 @@ HOST="${SONIFIER_HOST:-127.0.0.1}"
 
 # Resolve the directory this script lives in, so it works regardless of cwd.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
-SONIFIER_PY="${SONIFIER_PY:-${SCRIPT_DIR}/../sonifier.py}"
+SONIFIER_PY="${SONIFIER_PY:-${SCRIPT_DIR}/../src/sonifier.py}"
 
 health_url="http://${HOST}:${PORT}/health"
 

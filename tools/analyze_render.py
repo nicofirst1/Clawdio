@@ -138,8 +138,8 @@ def centroid_and_hf(x, sr, hf_cut=5000.0):
 # density) was the dominant complaint against v2.2. Thresholds calibrated the
 # same way every other criterion in this file is: measure the failing
 # control (v2.2's shipped render) first, then set the target ~20% below it --
-# see research/BRIEF-v2.3.md for the exact measured numbers this was
-# calibrated against (realistic-session.jsonl, steady window, v2.2 vs v2.3).
+# see docs/research/BRIEF-v2.3.md for the exact measured numbers this was
+# calibrated against (demos/realistic-session.jsonl, steady window, v2.2 vs v2.3).
 
 
 def spectral_flatness(x, sr):
@@ -499,8 +499,8 @@ def run_battery(x, sr, steady=None, label=""):
 
     # 1c/1d (v2.3, lit-review-annoyance recs #1-2): spectral flatness and
     # >3kHz brightness ratio. Thresholds are 20% below the measured v2.2
-    # shipped render on realistic-session.jsonl's steady window (flatness
-    # 0.001095, brightness 0.005118 -- see research/BRIEF-v2.3.md); v2.2
+    # shipped render on demos/realistic-session.jsonl's steady window (flatness
+    # 0.001095, brightness 0.005118 -- see docs/research/BRIEF-v2.3.md); v2.2
     # fails both, v2.3 passes both, by construction of the threshold.
     flat = spectral_flatness(ms, sr)
     rep.add("1c spectral flatness (v2.3)", "<= 0.000876", f"{flat:.6f}", flat <= 0.000876,
@@ -808,7 +808,7 @@ def n1_drop_rate_cap(x, sr, events, rep):
 
 # Events whose handle_event() branch spawns a pitched one-shot (not a drop),
 # mapped to the embedding-rule cap that applies to it (BRIEF-v2.2.md sec. 4).
-# The knock cap tracks sonifier.py's KNOCK_EMBED_CAP_DB -- update together.
+# The knock cap tracks src/sonifier.py's KNOCK_EMBED_CAP_DB -- update together.
 _EMBEDDING_EVENTS = {
     "UserPromptSubmit": 10.0,
     "Stop": 10.0,

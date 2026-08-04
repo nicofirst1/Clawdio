@@ -21,7 +21,7 @@ named after the phrase it exists to prevent.
 Run it on the render the listener will actually hear:
 
     python3 tools/complaint_checks.py realistic-pace-v22.wav \\
-        --events realistic-session.jsonl
+        --events demos/realistic-session.jsonl
 
 Exit code 0 if every check that ran passed, 1 otherwise.
 """
@@ -38,7 +38,7 @@ from scipy import signal as sps
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _HERE)
-sys.path.insert(0, os.path.dirname(_HERE))
+sys.path.insert(0, os.path.join(os.path.dirname(_HERE), "src"))
 
 from analyze_render import (  # noqa: E402
     Report, centroid_and_hf, db, load_events, load_wav, lr_balance_worst_5s,
@@ -244,7 +244,7 @@ def check_birds(x, sr, rep, seed=0):
     making every drop broadband noise, which is why this check's "grain is
     noise" / "in-mix noise-not-tone" legs assert HIGH spectral flatness --
     that was the right invariant for THAT timbre. v2.3's default (a damped
-    modal click, tonal by design -- see research/BRIEF-v2.3.md) fixes (b)
+    modal click, tonal by design -- see docs/research/BRIEF-v2.3.md) fixes (b)
     by moving the other direction, so those two legs would fail it for
     being exactly what it's supposed to be. The invariant that actually
     traces to the complaint, for ANY timbre, is "not a downward chirp"
