@@ -29,7 +29,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -
 DRY_RUN=0
 ASSUME_YES=0
 NO_MERGE=0
-CLAUDE_DIR="${CLAUDE_DIR:-${HOME:-.}/.claude}"
+CLAUDE_DIR="${CLAUDE_DIR:-${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}}"
 
 usage() {
     cat <<EOF
