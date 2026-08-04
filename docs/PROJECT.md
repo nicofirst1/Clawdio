@@ -1,6 +1,6 @@
 # claude-geiger — Functional Ambient Audio for AI Coding Agents
 
-**Project dossier: purpose, research record, design history, and current state** _Last updated: August 2026 · Status: v2.2 "Warm Room" shipped, awaiting second blind-listener round_
+**Project dossier: purpose, research record, design history, and current state** _Last updated: August 2026 · Status: v2.4 "State Legibility" shipped — v2.3 replaced the noise-tick drop with a woodblock timbre and halved event density; v2.4 fixed the Stop cadence and post-Stop idle so DONE reads as conclusive, not just "continues"_
 
 ---
 
@@ -153,7 +153,7 @@ Every phrase mapped to an identifiable engineering cause — this feedback was t
 | left/right difference      | full-width random panning + decorrelation                                                 |
 | not regular / lost         | no audible steady anchor under irregular events (Stallen: predictability = control)       |
 
-### v2.2 — "Warm Room" (current)
+### v2.2 — "Warm Room"
 
 All six causes fixed, each converted into a permanent numeric regression check (`tools/complaint_checks.py`):
 
@@ -163,6 +163,14 @@ All six causes fixed, each converted into a permanent numeric regression check (
 - **Embedding**: pitched one-shots ≤ bed + 10 dB; failure knock made detectable by a 3 dB "room pause" duck instead of loudness.
 - **Stereo**: |L−R| ≤ 1 dB per 5 s window; constrained panning.
 - Final state: 97 tests, 106 battery checks passing across 5 render types, 13/13 complaint-suite checks passing.
+
+### v2.3 — "Third Timbre"
+
+A second blind round (`research/blind-round2-2026-08-04.md`) found v2.2's own fix for the v2 "birds or drops?" complaint had traded it for a new one — free comment "the white noise and chaos" — with density confirmed as a contributing but insufficient cause. v2.3 halved event density (`DROP_MIN_GAP_S` 0.150→0.300s, rate map scaled 0.5×), replaced the noise-tick drop with a damped `woodblock` modal click (new `drop_timbre` config; `noise` kept as an exact-legacy A/B option, verified bit-identical), and shrank the air bed (-4dB, 2.8kHz ceiling on the brightest register). Two new measurable criteria — spectral flatness and >3kHz brightness — were added to `analyze_render.py` to make "reads as noise vs. tone" a number instead of a vibe. Round 4's forced-ranking listener test among woodblock/marimba/plink candidates has not been run yet; woodblock ships as the default because it's the closest sibling to the engine's existing knock-synthesis primitive, not because it won a listening test.
+
+### v2.4 — "State Legibility" (current)
+
+Two independent listeners — a scored baseline (three separate clips) and a live-listening pass — converged on the same defect: the DONE state (agent stopped, waiting for you) wasn't audibly distinct from WORKING. The v2.2 cadence gesture coin-flipped between landing on the tonic (C4) and the dominant (G4); a dominant landing is a half-cadence, which is _supposed_ to sound unresolved in tonal music. v2.4's cadence always resolves to the tonic, paired with a simultaneous bass-register root note for a true authentic (V→I) cadence, and replaces the 6-second post-Stop bed dip (which fell back to a level _louder_ than the dip itself) with a 20-second "settled" hold at -38dB plus a throttled self-playing bloom rate. Gated by `done_cadence` (`"v22"` legacy, exact bit-identical regression guard | `"v24"` new default). A new N6 battery criterion and round-5 comprehension re-test (not yet run with a listener) back the fix.
 
 ### The evaluation kit (`eval/`)
 
@@ -174,7 +182,7 @@ Built from Phase C research so future feedback is scored, not anecdotal: 15 pre-
 
 **Shipped and verified (by measurement):** the full pipeline — hooks → daemon → themed synthesis → renders — with deterministic offline rendering, a psychoacoustic acceptance battery, a listener-complaint regression suite, an evaluation kit, and two themes.
 
-**Honest limitations:** no human has yet heard v2.2 (all quality claims are calibrated numeric proxies); live audio has never run against real hardware (the dev container has no sound device — DSP is validated through the identical offline path); the mix is headphone-tuned (bass-forward; laptop speakers will thin it); context-pressure has no real producer yet (needs the statusline feed); true token-velocity needs wrapper mode; realistic sessions are now _very_ sparse by design — if listeners report "nothing there," the lever is drop salience, not the rate map.
+**Honest limitations:** a human has now heard the pipeline both ways — a scored N=1 session against v2.2 (`eval/responses/listener-N-2026-08-04.json`) and a live, unscored listening pass against the daemon during real work (documented in `docs/research/BRIEF-v2.4.md`) — but v2.3's timbre choice (woodblock over marimba/plink) and v2.4's cadence/settled-idle fix have each only had one scored/one anecdotal pass, not the multi-listener round each still has queued (round 4 forced-ranking for timbre, round 5 comprehension re-test for the Stop fix — see below); the mix is headphone-tuned (bass-forward; laptop speakers will thin it); context-pressure has no real producer yet (needs the statusline feed); true token-velocity needs wrapper mode; realistic sessions are now _very_ sparse by design — if listeners report "nothing there," the lever is drop salience, not the rate map.
 
 **Next steps, in order:** (1) second blind-listener round using the scoring sheet — place v2.2 on the pleasant×eventful plane and compare against the v2 point; (2) find the personal density threshold with the Block C clips; (3) first live deployment on real hardware during real Claude Code work, A–B–A′ protocol with mute-event logging; (4) wire the statusline → ContextPressure producer; (5) multi-session polyphony and the wrapper-mode true-velocity feed; (6) distribution hardening (Rust single binary was researched and selected as the v-next stack).
 

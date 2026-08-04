@@ -47,7 +47,7 @@ Five audible layers sharing one Freeverb "room" (see `docs/research/BRIEF-v2.md`
 - **Room**: the Freeverb room shrank (roomsize 0.78, damp 0.45, wet -6dB vs v2) — target RT60 ~1.0-2.2s, a warm room instead of a cathedral/cave.
 - **Brightness**: mix spectral centroid raised toward 350-1200Hz (v2 measured ~157Hz) via the new mid-register bed layer and an opened master lowpass (~6kHz default).
 - **Bed presence**: the bed — the "control anchor" — is louder and steadier (active ≈-30dBFS RMS, idle ≈-36dBFS, OU drift excursions halved) so there's a continuously-audible "engine humming", never a void with occasional sounds.
-- **Unambiguous drops**: rain drops are now short filtered-noise ticks (was a downward sine chirp, which read as a bird call to the blind listener) — reads as rain/typewriter, not wildlife.
+- **Unambiguous drops**: rain drops default to a damped woodblock modal click (`drop_timbre="woodblock"`, since v2.3 — was a downward sine chirp, which read as a bird call to the blind listener, then a filtered-noise tick, which read as "white noise and chaos"). `marimba`/`plink` are A/B candidates and `noise` (the exact v2.2 filtered-noise tick) is kept selectable for comparison; all are selectable via `drop_timbre`.
 - **No more lonely bings**: the r=3.5 FM bell voice (the "far-away bing" that put the listener "under pressure") is deleted from the routine Stop/PreCompact/bloom flow entirely; a softened version survives ONLY for `Notification`/`PermissionRequest`, where "something needs you" is the intended message. All pitched one-shots now sit embedded on the bed (peak ≤ bed + 10dB, knock exempt) instead of floating over near-silence.
 - **Stereo discipline**: drop pan ±0.35, note pan ±0.2 (was full-width random), mid/side ratio limited — fixes the "left/right difference" listener complaint.
 - **Predictability**: the self-playing melodic bloom is now biased toward stepwise motion (next note within ±2 pool steps of the previous one) instead of freely random pool draws.
@@ -190,12 +190,12 @@ python3 src/sonifier.py --render my-session.jsonl /tmp/out.wav
 ## Tests and verification tooling
 
 ```
-python3 -m pytest tests/ -q          # 97 tests (geiger DSP + ambient theme, incl. 14 v2.2 regression tests)
+python3 -m pytest tests/ -q          # 105 tests (geiger DSP + ambient theme); 104 pass, 1 fails for an unrelated platform reason (UDP datagram size limit on this OS), being fixed separately
 ```
 
 `tools/analyze_render.py` is the reusable acceptance battery: it runs every numeric criterion in `docs/research/BRIEF-v2.md`/`docs/research/BRIEF-v2.2.md` section 7 against a rendered WAV and prints a PASS/FAIL table, plus (with `--arc`) the per-10s RMS / centroid / rain-onset-density arc used to check that a render follows its storyboard. As of v2.2 it also runs the amended criteria (items marked `(v2.2)`: slope over 125Hz-8kHz, centroid floor+ceiling, tightened stereo correlation, 5s L-R balance) plus four new checks that need `--events`: N1 (drop-rate cap), N2 (embedding rule, measured peak-vs-peak), N3 (RT60 estimate — always N/A on real program material, see the code comment for why; the room's RT60 is measured off an impulse response by `tools/complaint_checks.py` and by the test suite), N4 (activity eventfulness ordering: busy > calm > idle), N5 (failure "room pause" depth), and `8b` (loudness stability measured inside automatically-detected constant-activity stretches rather than a caller-chosen window).
 
-`tools/complaint_checks.py` is the listener-complaint regression suite: it encodes the v2 blind listener's verbatim feedback ("dark cave", "birds or drops", "far-away bing", "left/right difference", "too fast", "not regular") as measurements, so a future re-tune cannot reintroduce one of them while still passing the section-7 battery. Its bird/chirp thresholds are calibrated against a positive control — the same render regenerated with v2's sine-chirp grains.
+`tools/complaint_checks.py` is the listener-complaint regression suite: it encodes the v2 blind listener's verbatim feedback ("dark cave", "birds or drops", "far-away bing", "left/right difference", "too fast", "not regular") as measurements, so a future re-tune cannot reintroduce one of them while still passing the section-7 battery. Its bird/chirp thresholds are calibrated against a positive control — the same render regenerated with v2's sine-chirp grains. 13 checks total; on the current default render (`drop_timbre="woodblock"`) 11 run and pass — the 2 bird/chirp-noise checks report N/A because they only apply to the `noise` drop timbre, and still run and pass when `drop_timbre="noise"` is configured.
 
 ```
 python3 tools/complaint_checks.py realistic-pace-v22.wav \
