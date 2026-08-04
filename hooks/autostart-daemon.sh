@@ -50,7 +50,12 @@ fi
 LOG_DIR="${SONIFIER_LOG_DIR:-${TMPDIR:-/tmp}}"
 LOG_FILE="${LOG_DIR}/sonifier.log"
 
-nohup python3 "$SONIFIER_PY" >>"$LOG_FILE" 2>&1 &
+# Prefer the repo's venv python (has numpy/scipy/sounddevice) over whatever
+# python3 is on the hook's PATH; SONIFIER_PYTHON overrides both.
+REPO_VENV_PY="${SCRIPT_DIR}/../.venv/bin/python"
+PYTHON="${SONIFIER_PYTHON:-$([ -x "$REPO_VENV_PY" ] && printf '%s' "$REPO_VENV_PY" || printf '%s' python3)}"
+
+nohup "$PYTHON" "$SONIFIER_PY" >>"$LOG_FILE" 2>&1 &
 disown 2>/dev/null || true
 
 exit 0
