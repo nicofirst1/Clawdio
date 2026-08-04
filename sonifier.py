@@ -1927,6 +1927,241 @@ class BedLayer:
         return r, gate
 
 
+class RainLayer:
+    """L2 rain grain stream (per-event drops + activity-driven Poisson bed)
+    plus the L1b "air" continuous shaped-noise bed the brief folds into the
+    same rain-gets-closer information channel (see _render_air's own
+    comment). Holds a back-reference to the parent AmbientTheme: drop/onset
+    spawning (_spawn_one_drop/_dispatch_drop/_trigger_event_drop) is also
+    called directly from AmbientTheme.handle_event (an ingress thread) and
+    from the test suite via state._dispatch_drop etc, and draws from the
+    SAME shared render-thread RNG (theme._rng) other layers draw from in a
+    fixed order -- so state/RNG stay owned by AmbientTheme, this class only
+    holds the rendering logic."""
+
+    def __init__(self, theme):
+        self.theme = theme
+
+    def spawn_one_drop(self, rng, cls, extra_gain_db=0.0):
+        """Render and queue exactly one drop voice (the coalesced unit --
+        brief-v2.2 section 1: "1 event = 1 drop (weighted)"). `extra_gain_db`
+        carries any accumulated burst-coalescing weight."""
+        theme = self.theme
+        fill_now = theme.fill_smooth.value
+        idx = int(rng.integers(0, len(theme.drop_bank)))
+        base = theme.drop_bank[idx]
+        # Register split by tool class (brief-v2.2 section 3): read ->
+        # brighter/quieter; exec -> lower center freq (x0.7) + slightly
+        # longer (achieved by the same resampling stretching duration).
+        pitch_mult, gain_db = 1.0, 0.0
+        if cls == CLASS_READ:
+            # -2 dB, not v2's -4: "read -> brighter/quieter" (brief section 3)
+            # still holds relative to write/exec, but the pitch shift already
+            # moves a read tap's energy up out of the bed's densest region, and
+            # -4 on top of that put the quiet tail of the class under the bed.
+            pitch_mult, gain_db = 1.3, -2.0
+        elif cls == CLASS_EXEC:
+            pitch_mult = 0.7
+        amp_db = rng.uniform(-DROP_AMP_SPREAD_DB, DROP_AMP_SPREAD_DB)
+        gain = _db_to_lin(gain_db + amp_db + extra_gain_db + DROP_CAL_DB)
+        n = len(base)
+        if abs(pitch_mult - 1.0) > 1e-6 and n > 4:
+            new_n = max(4, int(n / pitch_mult))
+            idxs = np.linspace(0, n - 1, new_n)
+            sig = np.interp(idxs, np.arange(n), base)
+        else:
+            sig = base.copy()
+        if fill_now > 0.85 and _HAVE_SCIPY:
+            cutoff = 4500.0 + (2000.0 - 4500.0) * min(1.0, (fill_now - 0.85) / 0.15)
+            b, a = _onepole_lp_coeffs(cutoff, theme.sr)
+            sig = _sp_signal.lfilter(b, a, sig)
+        # brief-v2.2 section 5: per-drop pan constrained to +-0.35 (was full
+        # width +-1.0 -- listener evidence: "left/right difference").
+        pan = rng.uniform(-DROP_PAN_LIMIT, DROP_PAN_LIMIT)
+        stereo = _mono_to_stereo((sig * gain).astype(np.float64), pan=pan)
+        theme._queue_voice({"buf": stereo, "pos": 0, "bus": "reverb"})
+
+    def dispatch_drop(self, rng, cls, extra_gain_db=0.0):
+        """Actually spawn a drop onset, enforcing the global pacing floor
+        (brief-v2.2 section 1: "min inter-drop gap 150 ms") across BOTH the
+        Poisson rain clock and per-event triggers. Onsets closer than the
+        floor are silently absorbed rather than spawned -- this, combined
+        with the compressive rate map, is what keeps N1 (never >7 onsets/s)
+        satisfied even under an a=1.0 flood."""
+        theme = self.theme
+        if theme.t - theme._last_any_onset_t < DROP_MIN_GAP_S:
+            return False
+        theme._spawn_one_drop(rng, cls, extra_gain_db=extra_gain_db)
+        theme._last_any_onset_t = theme.t
+        return True
+
+    def trigger_event_drop(self, rng, cls):
+        """Per-tool-event "instant twitch" drop trigger (handle_event side).
+        Brief-v2.2 section 1 burst coalescing: events arriving < 250 ms apart
+        merge into ONE weighted drop instead of stacking one drop per event."""
+        theme = self.theme
+        if theme.t - theme._last_event_onset_t < BURST_COALESCE_WINDOW_S:
+            theme._event_coalesce_bonus_db = min(
+                BURST_COALESCE_MAX_DB, theme._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
+            return
+        # v2.2 VERIFIER fix: dispatch_drop can REFUSE (the 150 ms global
+        # pacing floor, which the Poisson rain clock shares). The previous
+        # version ignored the return value and cleared the accumulated
+        # coalescing weight and advanced the 250 ms clock anyway -- so an
+        # event that landed inside another onset's pacing floor produced NO
+        # drop AND silently threw away every merged event's weight with it.
+        # Under a flood that is exactly the case that fires most often. On a
+        # refusal, treat the event as merged instead: keep the weight (and
+        # add this event's own step) for the next drop that does get through.
+        if theme._dispatch_drop(rng, cls, extra_gain_db=theme._event_coalesce_bonus_db):
+            theme._event_coalesce_bonus_db = 0.0
+            theme._last_event_onset_t = theme.t
+        else:
+            theme._event_coalesce_bonus_db = min(
+                BURST_COALESCE_MAX_DB, theme._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
+
+    def render_rain(self, dry, n, dt):
+        theme = self.theme
+        sr = theme.sr
+        # v2.2 section 1 pacing overhaul. v2's rate map (2 + 38*a**1.3, up to
+        # ~40 drops/s) was the direct cause of "too fast / losing control" --
+        # well past the ~4-6/s point where auditory counting breaks down. The
+        # replacement is compressive (log) and hard-capped at 6 discrete
+        # drops/s; the rate parameter itself is slewed (tau >= 2s) with
+        # hysteresis so a burst can't lurch the texture.
+        a_raw = max(0.0, theme.activity)   # unclamped: can exceed 1 under a flood
+        a = min(1.0, a_raw)
+        raw_rate = _drop_rate_from_activity(a)
+        if abs(raw_rate - theme.rain_rate.target) > RATE_HYSTERESIS:
+            theme.rain_rate.target = raw_rate
+        theme.rain_rate.step(dt)
+        rate = max(1e-4, theme.rain_rate.value)
+        # Discrete->wash crossfade: activity beyond the point where the
+        # compressive map reaches ~5/s (of the 6/s cap) does not add more
+        # drops -- it thickens the continuous wash bed instead (render_air
+        # reads theme.wash_excess). Uses the UNCLAMPED activity so a sustained
+        # flood (a_raw >> 1) keeps growing the wash even once the discrete
+        # rate itself is pinned at the cap.
+        theme.wash_excess = max(0.0, a_raw - WASH_CROSSFADE_A)
+        if theme.rain_enabled and rate > 0:
+            block_dur = n / sr
+            while theme.rain_next_dt <= block_dur:
+                theme._dispatch_drop(theme._rng, theme.current_class)
+                interval = -math.log(max(theme._rng.random(), 1e-12)) / rate
+                theme.rain_next_dt += interval
+            theme.rain_next_dt -= block_dur
+            if theme.rain_next_dt < 0:
+                theme.rain_next_dt = 0.0
+        else:
+            theme.rain_next_dt = max(theme.rain_next_dt, n / sr)
+
+        # NOTE: the brief's separate "light pink-noise rain bed that fades in
+        # with activity" is folded into the L1b air layer (render_air), whose
+        # level AND brightness both track activity -- the same information
+        # channel, but as one always-present generator instead of a second
+        # noise source appearing out of nowhere at a=0+. Two independent pink
+        # generators also cannot share _pink_zi, and a bed that switches on at
+        # -80 dB is exactly the kind of discontinuity section 7 item 8 flags.
+
+        # bash whoosh: 150-400Hz filtered-noise swell while a Bash tool is in flight
+        theme.whoosh_gain.step(dt)
+        if _HAVE_SCIPY and theme._whoosh_bp is not None and theme.whoosh_gain.value > 1e-4:
+            b, a_ = theme._whoosh_bp
+            zi = theme._whoosh_zi
+            if zi is None:
+                zi = _sp_signal.lfiltic(b, a_, [0.0])
+            noise = theme._rng.standard_normal(n)
+            filtered, zf = _sp_signal.lfilter(b, a_, noise, zi=zi)
+            theme._whoosh_zi = zf
+            gain = _db_to_lin(-34.0 + WHOOSH_CAL_DB) * theme.whoosh_gain.value
+            dry[:, 0] += filtered * gain
+            dry[:, 1] += filtered * gain
+
+    def pink_noise_block(self, white):
+        """Paul Kellet 3-pole pink noise approximation, vectorized via lfilter.
+
+        `white` may be (n,) or (n, k); the filter state adapts to its shape on
+        first use, so the same helper serves both the mono rain bed and the
+        3-channel air generator."""
+        theme = self.theme
+        poles = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
+        shape = None if white.ndim == 1 else (1,) + white.shape[1:]
+        if theme._pink_zi is None or theme._pink_zi[0] is Ellipsis:
+            theme._pink_zi = [None, None, None]
+        total = white * 0.1848
+        for i, (pole, gain) in enumerate(poles):
+            zi = theme._pink_zi[i]
+            if zi is None or (shape is None) != (np.ndim(zi) == 1):
+                zi = np.zeros(1) if shape is None else np.zeros(shape)
+            y, zf = _sp_signal.lfilter([gain], [1.0, -pole], white, zi=zi, axis=0)
+            theme._pink_zi[i] = zf
+            total = total + y
+        return total
+
+    def render_air(self, n, dt):
+        """L1b continuous shaped-noise bed. Returns (n,2).
+
+        One pink generator feeding three decorrelated streams: a common
+        (centre) stream plus one independent stream per channel at AIR_DECORR,
+        which fixes the interchannel correlation at a known value inside the
+        brief's 0.3-0.9 window instead of leaving it to whatever the reverb
+        happens to produce. Brightness (the upper tilt pole) and level both
+        follow activity: that is the "rain gets closer" information channel
+        and it moves both the RMS and the spectral centroid, which is what
+        section 7 item 9 asks for."""
+        theme = self.theme
+        if not _HAVE_SCIPY:
+            return np.zeros((n, 2))
+        # The air level follows a MEDIUM-smoothed activity envelope (tau 10 s),
+        # not the tau-3s one that drives grain density. Individual tool calls
+        # must not pump the bed: the instant twitch is the grains' job, and a
+        # bed that tracked every PreToolUse swung short-term (3 s) RMS by
+        # 4.3 dB, failing section 7 item 8 inside a single constant state.
+        a = max(0.0, min(1.0, theme.activity_med))
+        # v2.2 section 1 wash crossfade: sustained activity beyond the point
+        # where the discrete-drop rate map saturates (~5/s) thickens this
+        # layer further instead of adding more taps -- "heavy work = thicker
+        # wash, not faster taps". Normalized so a moderate flood (excess~=0.5)
+        # already reaches the full extra boost.
+        wash_boost = min(1.0, theme.wash_excess / 0.5)
+        # level: tracks the bed's own state envelope, opened up by activity
+        floor_db = theme.bed_level_db.value + AIR_FLOOR_OFFSET_DB
+        theme.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
+            AIR_WASH_BOOST_RANGE_DB * wash_boost)
+        theme.air_gain_db.step(dt)
+        # "gloom": a failure also dims the bed's own top end, which is where
+        # most of this mix's 2-6 kHz energy lives. The master one-pole alone
+        # could not deliver an audible darkening.
+        gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, theme.fail_penalty_slew.value / 2400.0)
+        theme.air_cut_hz.target = (AIR_TILT_HI_IDLE_HZ + (
+            AIR_TILT_HI_ACTIVE_HZ - AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
+            + AIR_WASH_BOOST_HZ * wash_boost) * gloom
+        theme.air_cut_hz.step(dt)
+        if theme.air_gain_db.value < -70.0:
+            return np.zeros((n, 2))
+
+        white = theme._rng.standard_normal((n, 3))
+        x = self.pink_noise_block(white)
+        x = self.air_stage(x, "lo", *_onepole_lp_coeffs(AIR_TILT_LO_HZ, theme.sr), 3)
+        x = self.air_stage(x, "hi", *_onepole_lp_coeffs(theme.air_cut_hz.value, theme.sr), 3)
+        b_hp, a_hp = theme._air_hp
+        x = self.air_stage(x, "hp", b_hp, a_hp, 3)
+        gain = _db_to_lin(theme.air_gain_db.value + AIR_CAL_DB) * theme._air_norm
+        out = np.empty((n, 2))
+        out[:, 0] = (x[:, 0] + AIR_DECORR * x[:, 1]) * gain
+        out[:, 1] = (x[:, 0] + AIR_DECORR * x[:, 2]) * gain
+        return out
+
+    def air_stage(self, x, key, b, a, nch):
+        theme = self.theme
+        zi = theme._air_zi.get(key)
+        if zi is None or zi.shape[-1] != nch:
+            zi = np.zeros((max(len(a), len(b)) - 1, nch))
+        y, zf = _sp_signal.lfilter(b, a, x, zi=zi, axis=0)
+        theme._air_zi[key] = zf
+        return y
+
+
 class AmbientTheme:
     """v2 default sound: generative ambient layers (BRIEF-v2.md). Exposes
     the same small interface as GeigerTheme: handle_event(evt), set_pressure
@@ -2053,6 +2288,7 @@ class AmbientTheme:
         self._last_event_onset_t = -999.0      # 250ms burst-coalescing clock
         self._event_coalesce_bonus_db = 0.0
         self.wash_excess = 0.0                  # activity beyond the ~5/s crossfade point
+        self.rain_layer = RainLayer(self)
 
         # L3 melodic bloom state
         self.next_note_dt = 3.0
@@ -2320,79 +2556,13 @@ class AmbientTheme:
             _voice_pool_add(self.voices, voice, self.sr)
 
     def _spawn_one_drop(self, rng, cls, extra_gain_db=0.0):
-        """Render and queue exactly one drop voice (the coalesced unit --
-        brief-v2.2 section 1: "1 event = 1 drop (weighted)"). `extra_gain_db`
-        carries any accumulated burst-coalescing weight."""
-        fill_now = self.fill_smooth.value
-        idx = int(rng.integers(0, len(self.drop_bank)))
-        base = self.drop_bank[idx]
-        # Register split by tool class (brief-v2.2 section 3): read ->
-        # brighter/quieter; exec -> lower center freq (x0.7) + slightly
-        # longer (achieved by the same resampling stretching duration).
-        pitch_mult, gain_db = 1.0, 0.0
-        if cls == CLASS_READ:
-            # -2 dB, not v2's -4: "read -> brighter/quieter" (brief section 3)
-            # still holds relative to write/exec, but the pitch shift already
-            # moves a read tap's energy up out of the bed's densest region, and
-            # -4 on top of that put the quiet tail of the class under the bed.
-            pitch_mult, gain_db = 1.3, -2.0
-        elif cls == CLASS_EXEC:
-            pitch_mult = 0.7
-        amp_db = rng.uniform(-DROP_AMP_SPREAD_DB, DROP_AMP_SPREAD_DB)
-        gain = _db_to_lin(gain_db + amp_db + extra_gain_db + DROP_CAL_DB)
-        n = len(base)
-        if abs(pitch_mult - 1.0) > 1e-6 and n > 4:
-            new_n = max(4, int(n / pitch_mult))
-            idxs = np.linspace(0, n - 1, new_n)
-            sig = np.interp(idxs, np.arange(n), base)
-        else:
-            sig = base.copy()
-        if fill_now > 0.85 and _HAVE_SCIPY:
-            cutoff = 4500.0 + (2000.0 - 4500.0) * min(1.0, (fill_now - 0.85) / 0.15)
-            b, a = _onepole_lp_coeffs(cutoff, self.sr)
-            sig = _sp_signal.lfilter(b, a, sig)
-        # brief-v2.2 section 5: per-drop pan constrained to +-0.35 (was full
-        # width +-1.0 -- listener evidence: "left/right difference").
-        pan = rng.uniform(-DROP_PAN_LIMIT, DROP_PAN_LIMIT)
-        stereo = _mono_to_stereo((sig * gain).astype(np.float64), pan=pan)
-        self._queue_voice({"buf": stereo, "pos": 0, "bus": "reverb"})
+        self.rain_layer.spawn_one_drop(rng, cls, extra_gain_db=extra_gain_db)
 
     def _dispatch_drop(self, rng, cls, extra_gain_db=0.0):
-        """Actually spawn a drop onset, enforcing the global pacing floor
-        (brief-v2.2 section 1: "min inter-drop gap 150 ms") across BOTH the
-        Poisson rain clock and per-event triggers. Onsets closer than the
-        floor are silently absorbed rather than spawned -- this, combined
-        with the compressive rate map, is what keeps N1 (never >7 onsets/s)
-        satisfied even under an a=1.0 flood."""
-        if self.t - self._last_any_onset_t < DROP_MIN_GAP_S:
-            return False
-        self._spawn_one_drop(rng, cls, extra_gain_db=extra_gain_db)
-        self._last_any_onset_t = self.t
-        return True
+        return self.rain_layer.dispatch_drop(rng, cls, extra_gain_db=extra_gain_db)
 
     def _trigger_event_drop(self, rng, cls):
-        """Per-tool-event "instant twitch" drop trigger (handle_event side).
-        Brief-v2.2 section 1 burst coalescing: events arriving < 250 ms apart
-        merge into ONE weighted drop instead of stacking one drop per event."""
-        if self.t - self._last_event_onset_t < BURST_COALESCE_WINDOW_S:
-            self._event_coalesce_bonus_db = min(
-                BURST_COALESCE_MAX_DB, self._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
-            return
-        # v2.2 VERIFIER fix: _dispatch_drop can REFUSE (the 150 ms global
-        # pacing floor, which the Poisson rain clock shares). The previous
-        # version ignored the return value and cleared the accumulated
-        # coalescing weight and advanced the 250 ms clock anyway -- so an
-        # event that landed inside another onset's pacing floor produced NO
-        # drop AND silently threw away every merged event's weight with it.
-        # Under a flood that is exactly the case that fires most often. On a
-        # refusal, treat the event as merged instead: keep the weight (and
-        # add this event's own step) for the next drop that does get through.
-        if self._dispatch_drop(rng, cls, extra_gain_db=self._event_coalesce_bonus_db):
-            self._event_coalesce_bonus_db = 0.0
-            self._last_event_onset_t = self.t
-        else:
-            self._event_coalesce_bonus_db = min(
-                BURST_COALESCE_MAX_DB, self._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
+        self.rain_layer.trigger_event_drop(rng, cls)
 
     def _spawn_note(self, rng, freq, velocity=0.4, bell=False, i_peak=None, pan=None,
                     delay_s=0.0, gain_db=0.0, embed_cap_db=NOTE_EMBED_CAP_DB):
@@ -2618,141 +2788,16 @@ class AmbientTheme:
         return y
 
     def _render_rain(self, dry, n, dt):
-        sr = self.sr
-        # v2.2 section 1 pacing overhaul. v2's rate map (2 + 38*a**1.3, up to
-        # ~40 drops/s) was the direct cause of "too fast / losing control" --
-        # well past the ~4-6/s point where auditory counting breaks down. The
-        # replacement is compressive (log) and hard-capped at 6 discrete
-        # drops/s; the rate parameter itself is slewed (tau >= 2s) with
-        # hysteresis so a burst can't lurch the texture.
-        a_raw = max(0.0, self.activity)   # unclamped: can exceed 1 under a flood
-        a = min(1.0, a_raw)
-        raw_rate = _drop_rate_from_activity(a)
-        if abs(raw_rate - self.rain_rate.target) > RATE_HYSTERESIS:
-            self.rain_rate.target = raw_rate
-        self.rain_rate.step(dt)
-        rate = max(1e-4, self.rain_rate.value)
-        # Discrete->wash crossfade: activity beyond the point where the
-        # compressive map reaches ~5/s (of the 6/s cap) does not add more
-        # drops -- it thickens the continuous wash bed instead (_render_air
-        # reads self.wash_excess). Uses the UNCLAMPED activity so a sustained
-        # flood (a_raw >> 1) keeps growing the wash even once the discrete
-        # rate itself is pinned at the cap.
-        self.wash_excess = max(0.0, a_raw - WASH_CROSSFADE_A)
-        if self.rain_enabled and rate > 0:
-            block_dur = n / sr
-            while self.rain_next_dt <= block_dur:
-                self._dispatch_drop(self._rng, self.current_class)
-                interval = -math.log(max(self._rng.random(), 1e-12)) / rate
-                self.rain_next_dt += interval
-            self.rain_next_dt -= block_dur
-            if self.rain_next_dt < 0:
-                self.rain_next_dt = 0.0
-        else:
-            self.rain_next_dt = max(self.rain_next_dt, n / sr)
-
-        # NOTE: the brief's separate "light pink-noise rain bed that fades in
-        # with activity" is folded into the L1b air layer (_render_air), whose
-        # level AND brightness both track activity -- the same information
-        # channel, but as one always-present generator instead of a second
-        # noise source appearing out of nowhere at a=0+. Two independent pink
-        # generators also cannot share _pink_zi, and a bed that switches on at
-        # -80 dB is exactly the kind of discontinuity section 7 item 8 flags.
-
-        # bash whoosh: 150-400Hz filtered-noise swell while a Bash tool is in flight
-        self.whoosh_gain.step(dt)
-        if _HAVE_SCIPY and self._whoosh_bp is not None and self.whoosh_gain.value > 1e-4:
-            b, a_ = self._whoosh_bp
-            zi = self._whoosh_zi
-            if zi is None:
-                zi = _sp_signal.lfiltic(b, a_, [0.0])
-            noise = self._rng.standard_normal(n)
-            filtered, zf = _sp_signal.lfilter(b, a_, noise, zi=zi)
-            self._whoosh_zi = zf
-            gain = _db_to_lin(-34.0 + WHOOSH_CAL_DB) * self.whoosh_gain.value
-            dry[:, 0] += filtered * gain
-            dry[:, 1] += filtered * gain
+        self.rain_layer.render_rain(dry, n, dt)
 
     def _pink_noise_block(self, white):
-        """Paul Kellet 3-pole pink noise approximation, vectorized via lfilter.
-
-        `white` may be (n,) or (n, k); the filter state adapts to its shape on
-        first use, so the same helper serves both the mono rain bed and the
-        3-channel air generator."""
-        poles = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
-        shape = None if white.ndim == 1 else (1,) + white.shape[1:]
-        if self._pink_zi is None or self._pink_zi[0] is Ellipsis:
-            self._pink_zi = [None, None, None]
-        total = white * 0.1848
-        for i, (pole, gain) in enumerate(poles):
-            zi = self._pink_zi[i]
-            if zi is None or (shape is None) != (np.ndim(zi) == 1):
-                zi = np.zeros(1) if shape is None else np.zeros(shape)
-            y, zf = _sp_signal.lfilter([gain], [1.0, -pole], white, zi=zi, axis=0)
-            self._pink_zi[i] = zf
-            total = total + y
-        return total
+        return self.rain_layer.pink_noise_block(white)
 
     def _render_air(self, n, dt):
-        """L1b continuous shaped-noise bed. Returns (n,2).
-
-        One pink generator feeding three decorrelated streams: a common
-        (centre) stream plus one independent stream per channel at AIR_DECORR,
-        which fixes the interchannel correlation at a known value inside the
-        brief's 0.3-0.9 window instead of leaving it to whatever the reverb
-        happens to produce. Brightness (the upper tilt pole) and level both
-        follow activity: that is the "rain gets closer" information channel
-        and it moves both the RMS and the spectral centroid, which is what
-        section 7 item 9 asks for."""
-        if not _HAVE_SCIPY:
-            return np.zeros((n, 2))
-        # The air level follows a MEDIUM-smoothed activity envelope (tau 10 s),
-        # not the tau-3s one that drives grain density. Individual tool calls
-        # must not pump the bed: the instant twitch is the grains' job, and a
-        # bed that tracked every PreToolUse swung short-term (3 s) RMS by
-        # 4.3 dB, failing section 7 item 8 inside a single constant state.
-        a = max(0.0, min(1.0, self.activity_med))
-        # v2.2 section 1 wash crossfade: sustained activity beyond the point
-        # where the discrete-drop rate map saturates (~5/s) thickens this
-        # layer further instead of adding more taps -- "heavy work = thicker
-        # wash, not faster taps". Normalized so a moderate flood (excess~=0.5)
-        # already reaches the full extra boost.
-        wash_boost = min(1.0, self.wash_excess / 0.5)
-        # level: tracks the bed's own state envelope, opened up by activity
-        floor_db = self.bed_level_db.value + AIR_FLOOR_OFFSET_DB
-        self.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
-            AIR_WASH_BOOST_RANGE_DB * wash_boost)
-        self.air_gain_db.step(dt)
-        # "gloom": a failure also dims the bed's own top end, which is where
-        # most of this mix's 2-6 kHz energy lives. The master one-pole alone
-        # could not deliver an audible darkening.
-        gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, self.fail_penalty_slew.value / 2400.0)
-        self.air_cut_hz.target = (AIR_TILT_HI_IDLE_HZ + (
-            AIR_TILT_HI_ACTIVE_HZ - AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
-            + AIR_WASH_BOOST_HZ * wash_boost) * gloom
-        self.air_cut_hz.step(dt)
-        if self.air_gain_db.value < -70.0:
-            return np.zeros((n, 2))
-
-        white = self._rng.standard_normal((n, 3))
-        x = self._pink_noise_block(white)
-        x = self._air_stage(x, "lo", *_onepole_lp_coeffs(AIR_TILT_LO_HZ, self.sr), 3)
-        x = self._air_stage(x, "hi", *_onepole_lp_coeffs(self.air_cut_hz.value, self.sr), 3)
-        b_hp, a_hp = self._air_hp
-        x = self._air_stage(x, "hp", b_hp, a_hp, 3)
-        gain = _db_to_lin(self.air_gain_db.value + AIR_CAL_DB) * self._air_norm
-        out = np.empty((n, 2))
-        out[:, 0] = (x[:, 0] + AIR_DECORR * x[:, 1]) * gain
-        out[:, 1] = (x[:, 0] + AIR_DECORR * x[:, 2]) * gain
-        return out
+        return self.rain_layer.render_air(n, dt)
 
     def _air_stage(self, x, key, b, a, nch):
-        zi = self._air_zi.get(key)
-        if zi is None or zi.shape[-1] != nch:
-            zi = np.zeros((max(len(a), len(b)) - 1, nch))
-        y, zf = _sp_signal.lfilter(b, a, x, zi=zi, axis=0)
-        self._air_zi[key] = zf
-        return y
+        return self.rain_layer.air_stage(x, key, b, a, nch)
 
     def _render_bloom_scheduler(self, n, dt):
         # second, slower-smoothed activity envelope (tau 15s) driving L3 rate
