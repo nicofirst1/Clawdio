@@ -3483,6 +3483,21 @@ def _udp_recv_loop(state, port, stop_event):
 
 
 def run_live():
+    # Detach from the launching terminal's session/process group. The
+    # autostart hook backgrounds us with nohup (blocks SIGHUP) but when the
+    # hook itself runs non-interactively (no job control), the child stays
+    # in the hook's process group rather than getting its own -- so a
+    # terminal closing can still SIGHUP/SIGTERM the whole group and take us
+    # with it even though nohup alone should have been enough. os.setsid()
+    # makes us our own session/group leader, independent of any controlling
+    # terminal. Safe to call unconditionally: run_live() is only ever the
+    # live daemon entry point (--check/--render never reach here), and it
+    # always starts as a regular (non-leader) child process from main().
+    try:
+        os.setsid()
+    except OSError:
+        pass  # already a session leader (e.g. re-exec, manual `setsid` launch)
+
     if sd is None:
         log.error(
             "sounddevice is not available (%s). Install it with:\n"

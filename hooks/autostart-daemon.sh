@@ -49,13 +49,15 @@ fi
 
 LOG_DIR="${SONIFIER_LOG_DIR:-${TMPDIR:-/tmp}}"
 LOG_FILE="${LOG_DIR}/sonifier.log"
+# Full DEBUG firehose (rotating) for post-mortem; console stays INFO in LOG_FILE.
+export SONIFIER_LOG_FILE="${SONIFIER_LOG_FILE:-${LOG_DIR}/sonifier.debug.log}"
 
 # Prefer the repo's venv python (has numpy/scipy/sounddevice) over whatever
 # python3 is on the hook's PATH; SONIFIER_PYTHON overrides both.
 REPO_VENV_PY="${SCRIPT_DIR}/../.venv/bin/python"
 PYTHON="${SONIFIER_PYTHON:-$([ -x "$REPO_VENV_PY" ] && printf '%s' "$REPO_VENV_PY" || printf '%s' python3)}"
 
-nohup "$PYTHON" "$SONIFIER_PY" >>"$LOG_FILE" 2>&1 &
+nohup "$PYTHON" "$SONIFIER_PY" </dev/null >>"$LOG_FILE" 2>&1 &
 disown 2>/dev/null || true
 
 exit 0
