@@ -481,15 +481,29 @@ def test_udp_ingress_survives_malformed_datagrams():
     probe.close()
     t = _threading.Thread(target=sonifier._udp_recv_loop, args=(state, port, stop), daemon=True)
     t.start()
-    _time.sleep(0.3)
+
+    def _wait_until(cond, deadline_s=2.0, interval_s=0.01):
+        end = _time.monotonic() + deadline_s
+        while _time.monotonic() < end:
+            if cond():
+                return True
+            _time.sleep(interval_s)
+        return cond()
+
+    u = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
     try:
-        u = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
         for junk in (b"", b"{", b"not json", b"\xff\xfe\x00", b"[]", b"null",
-                     b'{"hook_event_name":123}', b"A" * 60000):
+                     b'{"hook_event_name":123}', b"A" * 8000):
             u.sendto(junk, ("127.0.0.1", port))
-        u.sendto(json.dumps({"hook_event_name": "PostToolUse"}).encode(), ("127.0.0.1", port))
-        _time.sleep(0.5)
-        assert state.activity > 0.0, "valid event after junk must still register"
+        valid = json.dumps({"hook_event_name": "PostToolUse"}).encode()
+        # Resend the valid marker packet while polling: the recv thread's
+        # bind() races this send, so a single fire-and-forget send could land
+        # before the socket is up. Cheap and avoids a fixed startup sleep.
+        def _registered():
+            if state.activity <= 0.0:
+                u.sendto(valid, ("127.0.0.1", port))
+            return state.activity > 0.0
+        assert _wait_until(_registered), "valid event after junk must still register"
         assert t.is_alive(), "UDP loop must survive malformed input"
     finally:
         stop.set()

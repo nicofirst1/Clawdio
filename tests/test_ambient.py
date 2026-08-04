@@ -549,6 +549,19 @@ def test_failure_shading_releases_on_retry_success_not_on_any_tool():
     assert not state.bed.bass_shaded_vi and state.fail_penalty_hz == 0.0
 
 
+def test_fail_penalty_hz_staircase_and_cap():
+    """First consecutive failure jumps fail_penalty_hz by 2400 Hz, each
+    further consecutive failure steps it by 700 Hz, capped at 4200 Hz."""
+    state = make_ambient(seed=27)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    expected = [2400.0, 3100.0, 3800.0, 4200.0, 4200.0]
+    for exp in expected:
+        state.handle_event({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
+        assert state.fail_penalty_hz == pytest.approx(exp), (
+            f"expected fail_penalty_hz={exp} got {state.fail_penalty_hz}"
+        )
+
+
 def test_bed_recolorings_are_live_not_dead_state():
     """REGRESSION: bass_shaded_vi and sus2_until were set by handle_event but
     never read by any renderer, so the I->vi failure shading and the sus2
@@ -573,6 +586,59 @@ def test_bed_recolorings_are_live_not_dead_state():
     for _ in range(int(1.5 * SR / BLOCK)):
         sonifier.render_block(state2, BLOCK)
     assert state2.bed.sus2_amt.value > 0.2, "Notification must engage the sus2 partial"
+
+
+def test_subagent_start_at_depth_3_stays_sane():
+    """A third consecutive SubagentStart (depth 3, no matching Stop yet) must
+    keep incrementing subagent_refcount correctly and not crash or regress
+    the >=2 stem2 activation -- there is no depth-3-specific branch in
+    handle_subagent_start, so >=2 behavior (both stems engaged) must hold."""
+    state = make_ambient(seed=28)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({"hook_event_name": "SubagentStart"})
+    state.handle_event({"hook_event_name": "SubagentStart"})
+    state.handle_event({"hook_event_name": "SubagentStart"})
+    assert state.stem.subagent_refcount == 3
+    assert state.stem.stem1_gain.target == 1.0
+    assert state.stem.stem2_gain.target == 1.0
+    # must render without error at depth 3
+    for _ in range(50):
+        sonifier.render_block(state, BLOCK)
+    assert np.all(np.isfinite(sonifier.render_block(state, BLOCK)))
+    # unwinding one Stop must not drop below the >=2 stem2 activation
+    state.handle_event({"hook_event_name": "SubagentStop"})
+    assert state.stem.subagent_refcount == 2
+    assert state.stem.stem2_gain.target == 1.0
+
+
+def test_precompact_gesture_gated_by_gestures_enabled():
+    """PreCompact spawns a c3/a2 note sequence (spacing 0.55s) when
+    gestures_enabled -- otherwise it must be silent (no gesture note)."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart"}),
+        (6.0, {"hook_event_name": "PreCompact"}),
+    ]
+    audio_on, _ = render_events(events, duration_s=10.0, seed=30, chimes_enabled=True)
+    audio_off, _ = render_events(events, duration_s=10.0, seed=30, chimes_enabled=False)
+    mono_on = audio_on.mean(axis=1).astype(np.float64)
+    mono_off = audio_off.mean(axis=1).astype(np.float64)
+
+    gesture_on = window_rms(mono_on, 6.4, 0.5)
+    gesture_off = window_rms(mono_off, 6.4, 0.5)
+    # local pre-event window as baseline (not a distant one): the ambient bed
+    # is still ramping through session-start, so a far-away baseline drifts
+    # and isn't a fair "no gesture" comparison.
+    baseline_on = window_rms(mono_on, 5.5, 0.4)
+    baseline_off = window_rms(mono_off, 5.5, 0.4)
+
+    assert gesture_on > baseline_on * 1.2, (
+        "expected an audible PreCompact gesture when gestures_enabled=True, "
+        f"gesture_rms={gesture_on} baseline={baseline_on}"
+    )
+    assert gesture_off <= baseline_off * 1.2, (
+        "PreCompact must not produce an audible gesture when gestures_enabled=False, "
+        f"gesture_rms={gesture_off} baseline={baseline_off}"
+    )
 
 
 def test_subagent_stem_has_no_unfiltered_saw_buzz():
