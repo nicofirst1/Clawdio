@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind listening test — round 4</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  .clip { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  .clip h2 { margin: 0 0 .5rem; }
+  audio { width: 100%; }
+  fieldset { border: none; padding: 0; margin: 1rem 0; }
+  #result { white-space: pre-wrap; background: #f6f6f6; border-radius: 8px; padding: 1rem; display: none; font-family: monospace; }
+  button { font-size: 1rem; padding: .5rem 1.2rem; border-radius: 6px; border: 1px solid #888; background: #fff; cursor: pointer; }
+  input[type=text] { font-size: 1rem; padding: .3rem .5rem; }
+</style>
+</head>
+<body>
+<h1>Blind listening test — round 4</h1>
+<p>Four ~50s clips of the SAME simulated coding session (calm reading, then busy
+   editing, then a burst of commands, then calm again) rendered four different ways.
+   Listen with the volume you'd actually use while working, in the order given below.
+   Don't overthink it — first impressions count.</p>
+<p><strong>No rating scales this time</strong> — round 3 found absolute 1-7 ratings
+   carry no information when every clip is unpleasant in isolation (a floor effect).
+   This round is forced ranking only: just tell us your order of preference and,
+   if you want, why.</p>
+
+<div class="clip" data-id="W">
+  <h2>Clip W</h2>
+  <audio controls preload="none" src="round4_W.mp3"></audio>
+</div>
+<div class="clip" data-id="X">
+  <h2>Clip X</h2>
+  <audio controls preload="none" src="round4_X.mp3"></audio>
+</div>
+<div class="clip" data-id="Y">
+  <h2>Clip Y</h2>
+  <audio controls preload="none" src="round4_Y.mp3"></audio>
+</div>
+<div class="clip" data-id="Z">
+  <h2>Clip Z</h2>
+  <audio controls preload="none" src="round4_Z.mp3"></audio>
+</div>
+
+<fieldset>
+  <p><strong>Rank them, best first</strong> (e.g. "Y W Z X" — the one you'd
+    most want playing in the background for hours, first):<br>
+    <input id="rank" size="20" placeholder="e.g. Y W Z X"></p>
+  <p><strong>Any comments?</strong> (what made the best one better, what made
+    the worst one worse — a sentence or two is plenty)<br>
+    <input id="comment" size="60" style="width:100%"></p>
+</fieldset>
+
+<button onclick="report()">Show my answers</button>
+<p id="result"></p>
+
+<script>
+function report() {
+  let out = 'BLIND TEST RESULTS (round 4)\n';
+  out += `rank (best first): ${document.getElementById('rank').value || '-'}\n`;
+  out += `comment: ${document.getElementById('comment').value || '-'}`;
+  const p = document.getElementById('result');
+  p.textContent = out;
+  p.style.display = 'block';
+}
+</script>
+</body>
+</html>
