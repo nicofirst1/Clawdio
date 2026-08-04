@@ -262,13 +262,13 @@ def test_activity_high_vs_low_render_differ():
         state.handle_event({"hook_event_name": "UserPromptSubmit", "prompt": "x"})
         dispatched = [0]
         if count_dispatches:
-            orig = state._dispatch_drop
+            orig = state.rain.dispatch_drop
             def counted(*a, **kw):
                 fired = orig(*a, **kw)
                 if fired:
                     dispatched[0] += 1
                 return fired
-            state._dispatch_drop = counted
+            state.rain.dispatch_drop = counted
         n_blocks = int(math.ceil(8.0 * SR / BLOCK))
         chunks = []
         for _ in range(n_blocks):
@@ -527,15 +527,15 @@ def test_failure_shading_releases_on_retry_success_not_on_any_tool():
     state = make_ambient(seed=22)
     state.handle_event({"hook_event_name": "SessionStart"})
     state.handle_event({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
-    assert state.bass_shaded_vi and state.fail_penalty_hz > 0
+    assert state.bed.bass_shaded_vi and state.fail_penalty_hz > 0
     state.handle_event({"hook_event_name": "PostToolUse", "tool_name": "Read"})
-    assert state.bass_shaded_vi, "an unrelated Read must not clear a Bash failure"
+    assert state.bed.bass_shaded_vi, "an unrelated Read must not clear a Bash failure"
     state.handle_event({"hook_event_name": "PostToolUse", "tool_name": "Bash"})
-    assert not state.bass_shaded_vi and state.fail_penalty_hz == 0.0
+    assert not state.bed.bass_shaded_vi and state.fail_penalty_hz == 0.0
     # ... and Stop clears it too
     state.handle_event({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
     state.handle_event({"hook_event_name": "Stop"})
-    assert not state.bass_shaded_vi and state.fail_penalty_hz == 0.0
+    assert not state.bed.bass_shaded_vi and state.fail_penalty_hz == 0.0
 
 
 def test_bed_recolorings_are_live_not_dead_state():
@@ -546,22 +546,22 @@ def test_bed_recolorings_are_live_not_dead_state():
     state.handle_event({"hook_event_name": "SessionStart"})
     for _ in range(200):
         sonifier.render_block(state, BLOCK)
-    assert abs(state.bed_root_ratio.value - 1.0) < 1e-6
+    assert abs(state.bed.bed_root_ratio.value - 1.0) < 1e-6
     state.handle_event({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
     for _ in range(int(6.0 * SR / BLOCK)):
         sonifier.render_block(state, BLOCK)
-    assert state.bed_root_ratio.value < 0.92, "bed root must glide C -> A on failure"
+    assert state.bed.bed_root_ratio.value < 0.92, "bed root must glide C -> A on failure"
     state.handle_event({"hook_event_name": "Stop"})
     for _ in range(int(12.0 * SR / BLOCK)):
         sonifier.render_block(state, BLOCK)
-    assert state.bed_root_ratio.value > 0.98, "bed root must return to C after Stop"
+    assert state.bed.bed_root_ratio.value > 0.98, "bed root must return to C after Stop"
 
     state2 = make_ambient(seed=24)
     state2.handle_event({"hook_event_name": "SessionStart"})
     state2.handle_event({"hook_event_name": "Notification"})
     for _ in range(int(1.5 * SR / BLOCK)):
         sonifier.render_block(state2, BLOCK)
-    assert state2.sus2_amt.value > 0.2, "Notification must engage the sus2 partial"
+    assert state2.bed.sus2_amt.value > 0.2, "Notification must engage the sus2 partial"
 
 
 def test_subagent_stem_has_no_unfiltered_saw_buzz():
@@ -699,13 +699,13 @@ def test_v22_drop_rate_never_exceeds_cap_under_flood():
     state = make_ambient(seed=40)
     state.handle_event({"hook_event_name": "SessionStart"})
     onset_times = []
-    orig = state._dispatch_drop
+    orig = state.rain.dispatch_drop
     def instrumented(*a, **kw):
         fired = orig(*a, **kw)
         if fired:
             onset_times.append(state.t)
         return fired
-    state._dispatch_drop = instrumented
+    state.rain.dispatch_drop = instrumented
 
     n_blocks = int(math.ceil(20.0 * SR / BLOCK))
     ev_i = 0
@@ -742,13 +742,13 @@ def test_v22_burst_coalescing_merges_close_events_into_one_onset():
     state = make_ambient(seed=41)
     state.handle_event({"hook_event_name": "SessionStart"})
     fired = []
-    orig = state._dispatch_drop
+    orig = state.rain.dispatch_drop
     def instrumented(*a, **kw):
         ok = orig(*a, **kw)
         if ok:
             fired.append(state.t)
         return ok
-    state._dispatch_drop = instrumented
+    state.rain.dispatch_drop = instrumented
 
     # Advance ~50ms, fire event 1; advance 100ms, fire event 2 (< 250ms gap).
     for _ in range(int(0.05 * SR / BLOCK)):
@@ -764,7 +764,7 @@ def test_v22_burst_coalescing_merges_close_events_into_one_onset():
     # the second (coalesced/suppressed) event's weight is carried forward as
     # a bonus for the NEXT actual dispatch rather than lost -- "+weight"
     # per the brief -- so it should be > 0 here (it hasn't fired yet).
-    assert state._event_coalesce_bonus_db > 0.0
+    assert state.rain._event_coalesce_bonus_db > 0.0
 
 
 def test_v22_embedding_rule_note_and_knock_peak_caps():
@@ -776,7 +776,7 @@ def test_v22_embedding_rule_note_and_knock_peak_caps():
     state.handle_event({"hook_event_name": "SessionStart"})
     for _ in range(int(4.0 * SR / BLOCK)):
         sonifier.render_block(state, BLOCK)  # let bed_level_db settle
-    bed_ref_db = state.bed_level_db.value + sonifier.BED_CAL_DB
+    bed_ref_db = state.bed.bed_level_db.value + sonifier.BED_CAL_DB
 
     state._pending.clear()
     rng = np.random.default_rng(1)
@@ -824,7 +824,7 @@ def test_v22_stereo_pan_limits_drops_and_notes():
     drop_pans = []
     for _ in range(200):
         state._pending.clear()
-        state._spawn_one_drop(rng, sonifier.CLASS_READ)
+        state.rain.spawn_one_drop(rng, sonifier.CLASS_READ, state.fill_smooth.value)
         for v in state._pending:
             drop_pans.append(_implied_pan(v["buf"]))
     assert drop_pans, "expected drop voices to inspect"
@@ -1028,7 +1028,7 @@ def test_v22_room_pause_duck_is_smooth_bounded_and_returns_to_unity():
 
 
 def test_v22_coalescing_keeps_weight_when_the_pacing_floor_refuses_a_drop():
-    """REGRESSION: _trigger_event_drop ignored _dispatch_drop's return value.
+    """REGRESSION: trigger_event_drop ignored dispatch_drop's return value.
     When the 150 ms global pacing floor refused a drop, the accumulated burst
     weight was cleared and the 250 ms coalescing clock advanced anyway -- the
     event produced NO drop and silently discarded every merged event's weight
@@ -1037,20 +1037,20 @@ def test_v22_coalescing_keeps_weight_when_the_pacing_floor_refuses_a_drop():
     state.handle_event({"hook_event_name": "SessionStart"})
     state.t = 5.0
     # occupy the pacing floor with an onset "just now"
-    state._last_any_onset_t = state.t
-    state._last_event_onset_t = -999.0
-    state._event_coalesce_bonus_db = sonifier.BURST_COALESCE_STEP_DB
+    state.rain._last_any_onset_t = state.t
+    state.rain._last_event_onset_t = -999.0
+    state.rain._event_coalesce_bonus_db = sonifier.BURST_COALESCE_STEP_DB
     spawned = []
-    state._spawn_one_drop = lambda rng, cls, extra_gain_db=0.0: spawned.append(extra_gain_db)
+    state.rain.spawn_one_drop = lambda rng, cls, fill_smooth_value, extra_gain_db=0.0: spawned.append(extra_gain_db)
 
-    state._trigger_event_drop(state._rng, sonifier.CLASS_WRITE)
+    state.rain.trigger_event_drop(state._rng, sonifier.CLASS_WRITE, state.t, state.fill_smooth.value)
     assert not spawned, "pacing floor should have refused this drop"
-    assert state._event_coalesce_bonus_db > sonifier.BURST_COALESCE_STEP_DB, (
+    assert state.rain._event_coalesce_bonus_db > sonifier.BURST_COALESCE_STEP_DB, (
         "coalescing weight was thrown away on a refused dispatch")
 
     # once the floor clears, the accumulated weight must reach a real drop
     state.t += sonifier.DROP_MIN_GAP_S + 0.3
-    state._trigger_event_drop(state._rng, sonifier.CLASS_WRITE)
+    state.rain.trigger_event_drop(state._rng, sonifier.CLASS_WRITE, state.t, state.fill_smooth.value)
     assert spawned, "no drop after the pacing floor cleared"
     assert spawned[0] >= 2 * sonifier.BURST_COALESCE_STEP_DB, (
         f"merged weight {spawned[0]:.1f} dB did not carry across the refusal")
