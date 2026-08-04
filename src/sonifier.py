@@ -974,6 +974,25 @@ DROP_PAN_LIMIT = 0.35         # brief section 5: per-drop pan constrained to +-0
 NOTE_PAN_LIMIT = 0.20         # melodic notes constrained to +-0.20
 MS_MAX_SIDE_OVER_MID = 0.5    # brief section 5: S <= 0.5*M
 
+# v2.4 state legibility (research/BRIEF-v2.4.md): two independent listeners
+# confirmed the same defect -- the Stop cadence doesn't read as conclusive
+# and idle-after-Stop is indistinguishable from idle-during-work. done_cadence
+# ="v22" reproduces the exact legacy Stop handling (regression guard, same
+# trick as drop_timbre="noise"); "v24" is the new default. SETTLED_* controls
+# the post-Stop "waiting for user" window: deeper/longer bed dip than the
+# ordinary idle ladder, and a much sparser bloom rate.
+DONE_CADENCE_MODES = ("v22", "v24")
+SETTLED_HOLD_S = 20.0          # how long after Stop the bed stays "settled" before
+                                # falling back to the ordinary idle ladder
+SETTLED_BED_DB = -38.0         # settled bed target (v2.2's post-Stop hold was -33,
+                                # then rose back to -30 after only 6s -- the opposite
+                                # of "quieter/waiting"); -38 sits between the >90s and
+                                # >600s idle-ladder rungs, calibrated in BRIEF-v2.4.md
+SETTLED_BED_TAU_S = 8.0        # glide time into the settled level
+SETTLED_BLOOM_RATE_SCALE = 0.35  # bloom's self-play rate is scaled by this while
+                                  # settled (on top of the existing idle rate) --
+                                  # "very sparse", not silent
+
 
 def _drop_rate_from_activity(a):
     """Compressive (log) discrete-drop rate map, brief section 1:
@@ -1481,10 +1500,35 @@ def _nearest_pool_note(target_midi):
 
 
 def _build_cadence_notes(rng, n_notes=None):
-    """2-4 note descending pentatonic sequence landing on C or G."""
+    """v2.2 legacy: 2-4 note descending pentatonic sequence landing on C or G.
+    Kept verbatim for done_cadence="v22" (see AmbientConfig.done_cadence /
+    research/BRIEF-v2.4.md) -- this is why round 2's baseline eval found the
+    Stop cadence didn't read as conclusive: landing on G (the dominant, not
+    the tonic) half the time is a half-cadence, not a resolution."""
     if n_notes is None:
         n_notes = int(rng.integers(2, 5))
     land = int(rng.choice([60, 67]))  # C4 or G4
+    seq_desc = [land]
+    cur = land
+    for _ in range(n_notes - 1):
+        cur = cur - int(rng.choice([2, 3, 4, 5]))
+        seq_desc.append(cur)
+    seq_desc = seq_desc[::-1]  # play in time order: highest-first, ending on land
+    return [_nearest_pool_note(m)[1] for m in seq_desc]
+
+
+def _build_cadence_notes_v24(rng, n_notes=None):
+    """v2.4 authentic cadence: 3-4 note descending pentatonic sequence that
+    ALWAYS lands on C4 (the tonic -- never G, the dominant/half-cadence),
+    per research/BRIEF-v2.4.md. This is the melodic voice of the gesture;
+    AmbientTheme.handle_event pairs it with a simultaneous bass-register
+    root landing (ROOT_C2/C3, the pad's own fundamental) so the resolution
+    reads harmonically, not just melodically -- the "authentic cadence"
+    (V-I with a root-position tonic landing) tonal listeners actually parse
+    as conclusive, vs. v2.2's melody-only descent."""
+    if n_notes is None:
+        n_notes = int(rng.integers(3, 5))
+    land = 60  # C4 -- tonic only, never the dominant
     seq_desc = [land]
     cur = land
     for _ in range(n_notes - 1):
@@ -1777,6 +1821,16 @@ class AmbientConfig:
     # DROP_TIMBRES ("woodblock" default, "marimba"/"plink" A/B candidates,
     # "noise" = exact v2.2 legacy grain, kept for regression/A-B comparison).
     drop_timbre: str = "woodblock"
+    # v2.4 state legibility (two-listener evidence -- research/BRIEF-v2.4.md):
+    # one of DONE_CADENCE_MODES. "v24" (default): authentic cadence (melody
+    # lands on the tonic + a simultaneous bass-register root note) followed
+    # by a settled idle (deeper bed dip, sparser bloom). "v22": exact legacy
+    # Stop handling, kept for regression/A-B comparison.
+    done_cadence: str = "v24"
+    SETTLED_HOLD_S: float = SETTLED_HOLD_S
+    SETTLED_BED_DB: float = SETTLED_BED_DB
+    SETTLED_BED_TAU_S: float = SETTLED_BED_TAU_S
+    SETTLED_BLOOM_RATE_SCALE: float = SETTLED_BLOOM_RATE_SCALE
     NOTE_EMBED_CAP_DB: float = NOTE_EMBED_CAP_DB
     NOTE_EMBED_CAP_IDLE_DB: float = NOTE_EMBED_CAP_IDLE_DB
     KNOCK_EMBED_CAP_DB: float = KNOCK_EMBED_CAP_DB
@@ -1970,10 +2024,11 @@ class BedLayer:
     sub-layer (bed_level_db only) -- legitimate cross-layer READS of this
     layer's own public state, not a back-reference out of it."""
 
-    def __init__(self, rng, apply_lp_stage, sr):
+    def __init__(self, rng, apply_lp_stage, sr, done_cadence="v24"):
         self._rng = rng
         self._apply_lp_stage = apply_lp_stage
         self.sr = sr
+        self.done_cadence = done_cadence
 
         self.bed_phase = np.zeros((2, 2, SUPERSAW_VOICES))  # [bed(C2/C3), ch(L/R), voice]
         self.bed_phase[:] = rng.random(self.bed_phase.shape)
@@ -2026,7 +2081,13 @@ class BedLayer:
         if self.holding_breath_until is not None and t < self.holding_breath_until:
             return -33.0, 2.0
         if self.easing_after_stop_until is not None and t < self.easing_after_stop_until:
-            return -33.0, 5.0
+            if self.done_cadence == "v22":
+                return -33.0, 5.0
+            # v2.4 "settled" idle (research/BRIEF-v2.4.md): deeper and longer
+            # than the legacy 6s/-33dB hold, which fell back to the ordinary
+            # idle ladder (-30dB, same as "idle but recently working") after
+            # only 6s -- the opposite of a distinct "waiting for you" state.
+            return SETTLED_BED_DB, SETTLED_BED_TAU_S
         since_start = t - (session_start_t or 0.0)
         idle_dur = t - last_event_t
         if since_start < 3.0:
@@ -2155,7 +2216,8 @@ class BedLayer:
     def handle_stop(self, t):
         self.failed_tool = None
         self.bass_shaded_vi = False
-        self.easing_after_stop_until = t + 6.0
+        hold_s = 6.0 if self.done_cadence == "v22" else SETTLED_HOLD_S
+        self.easing_after_stop_until = t + hold_s
 
     def handle_notification(self, t):
         self.holding_breath_until = t + 2.5
@@ -2488,7 +2550,7 @@ class BloomLayer:
         self.last_note_t = -999.0
         self._last_bloom_pool_idx = None  # v2.2 section 6: stepwise motion bias
 
-    def render(self, n, dt, t, activity, activity_slow):
+    def render(self, n, dt, t, activity, activity_slow, settled=False):
         # second, slower-smoothed activity envelope (tau 15s) driving L3 rate
         a_target = max(0.0, min(1.0, activity))
         alpha = 1.0 - math.exp(-dt / 15.0)
@@ -2497,6 +2559,12 @@ class BloomLayer:
         idle_rate = 1.0 / 45.0
         busy_rate = 1.0 / 2.5
         rate = idle_rate + (busy_rate - idle_rate) * activity_slow
+        # v2.4 "settled" idle (research/BRIEF-v2.4.md): self-play drops to
+        # very sparse (not silent) right after Stop, distinct from ordinary
+        # idle-during-work -- one of the two audible legs of the DONE state
+        # (the other is BedLayer's deeper settled bed dip).
+        if settled:
+            rate *= SETTLED_BLOOM_RATE_SCALE
         rate = max(rate, 1e-4)
 
         block_dur = n / self.sr
@@ -2650,7 +2718,8 @@ class AmbientTheme:
         # drop bank, then stem_phase), and that draw order must stay
         # identical to the pre-split single-__init__ sequence for
         # byte-identical renders under a fixed seed.
-        self.bed = BedLayer(self._rng, self._apply_lp_stage, sr)
+        self.bed = BedLayer(self._rng, self._apply_lp_stage, sr,
+                           done_cadence=self.cfg.done_cadence)
         self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled,
                                drop_timbre=self.cfg.drop_timbre)
         self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr)
@@ -2775,9 +2844,26 @@ class AmbientTheme:
         elif name == "Stop":
             self.bed.handle_stop(self.t)
             if self.gestures_enabled:
-                notes = _build_cadence_notes(rng)
+                cadence_spacing = 0.26
+                if self.cfg.done_cadence == "v22":
+                    notes = _build_cadence_notes(rng)
+                else:
+                    # v2.4 authentic cadence (research/BRIEF-v2.4.md): the
+                    # melody always lands on the tonic (C4, never the
+                    # dominant G4 -- see _build_cadence_notes_v24), paired
+                    # with a simultaneous bass-register root landing
+                    # (ROOT_C2, the pad's own fundamental) timed to sound at
+                    # the same instant as the melody's final note. A root-
+                    # position tonic in the bass under a melodic resolution
+                    # is what makes a cadence read as "authentic" (resolved)
+                    # rather than just "a melody that stopped" -- exactly
+                    # the two-listener-confirmed defect this version fixes.
+                    notes = _build_cadence_notes_v24(rng)
+                    land_delay_s = (len(notes) - 1) * cadence_spacing
+                    self._spawn_note(rng, ROOT_C2, velocity=0.5, delay_s=land_delay_s,
+                                     gain_db=2.0, pan=0.0)
                 # brief-v2.2 section 5: "knock/cadence center" -- pan=0.0.
-                self._spawn_note_sequence(rng, notes, velocity=0.4, spacing=0.26,
+                self._spawn_note_sequence(rng, notes, velocity=0.4, spacing=cadence_spacing,
                                           gain_db=-2.0, pan=0.0)
             self.activity *= 0.3
             self.fail_penalty_hz = 0.0
@@ -2920,7 +3006,14 @@ class AmbientTheme:
             self.bed.render(send, n, dt, self.t, self.last_event_t, self.session_start_t,
                              self.fill_smooth.value)
             self.stem.render(send, n, dt)
-            self.activity_slow = self.bloom.render(n, dt, self.t, self.activity, self.activity_slow)
+            # v2.4: bed's own settled-until window (post-Stop, "v24" mode
+            # only) also gates the bloom rate -- see BloomLayer.render's
+            # `settled` docstring note.
+            settled = (self.bed.done_cadence != "v22"
+                      and self.bed.easing_after_stop_until is not None
+                      and self.t < self.bed.easing_after_stop_until)
+            self.activity_slow = self.bloom.render(n, dt, self.t, self.activity,
+                                                    self.activity_slow, settled=settled)
             # "Room pause" duck (see _duck_block): applied to the SUSTAINED
             # layers only -- bed pad, stems, air, sub-bass -- and never to the
             # voice buses, so the knock itself is untouched and gains its
