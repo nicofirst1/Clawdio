@@ -23,7 +23,10 @@ except Exception as exc:  # pragma: no cover - environment dependent
     sd = None
     _SD_IMPORT_ERROR = exc
 
-from config import SAMPLE_RATE, BLOCKSIZE, MAX_BODY_BYTES, HTTP_READ_TIMEOUT, THEME_GEIGER, load_config
+from config import (
+    SAMPLE_RATE, BLOCKSIZE, MAX_BODY_BYTES, HTTP_READ_TIMEOUT, THEME_GEIGER,
+    load_config, save_config, config_path, CONFIG_NORMALIZERS, LIVE_KEYS,
+)
 from geiger import GeigerTheme, render_block
 from ambient import AmbientTheme
 from logging_setup import get_logger
@@ -127,22 +130,63 @@ def _write_wav(path, stereo_f32, sr):
 
 
 # --------------------------------------------------------------------------
-# Live mode: HTTP + UDP ingress, sounddevice output
+# Live mode: HTTP + UDP ingress, sounddevice output, config web UI
 # --------------------------------------------------------------------------
+
+# Static files for the config UI. Fixed whitelist -- no path resolution, no
+# traversal surface.
+_WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
+_STATIC_FILES = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+}
+
+# How each live config key maps onto theme-state attributes. Ambient renamed
+# clicks/chimes to rain/gestures at init, so try each candidate in order.
+_LIVE_ATTRS = {
+    "volume": ("volume",),
+    "mute": ("mute",),
+    "clicks": ("clicks_enabled", "rain_enabled"),
+    "chimes": ("chimes_enabled", "gestures_enabled"),
+    "drone": ("drone_enabled",),
+}
+
+
+def _apply_live(state, cfg: dict) -> None:
+    for key, attrs in _LIVE_ATTRS.items():
+        if key not in cfg:
+            continue
+        for attr in attrs:
+            if hasattr(state, attr):
+                setattr(state, attr, cfg[key])
+
 
 class _EventHTTPHandler(BaseHTTPRequestHandler):
     state: EngineState = None  # set by server factory
+    boot_cfg: dict = None  # config the daemon started with (restart detection)
+    restart_event: threading.Event = None  # set by POST /restart
     protocol_version = "HTTP/1.0"  # no keep-alive: don't pin a thread per client
     timeout = HTTP_READ_TIMEOUT  # bound a slow/stalled client's socket reads
 
     def log_message(self, fmt, *args):  # silence default logging
         pass
 
-    def do_POST(self):
-        if self.path != "/event":
-            self.send_response(404)
-            self.end_headers()
-            return
+    def _send_json(self, obj, status=200):
+        payload = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _is_local(self) -> bool:
+        # /event ingress is LAN-open by design, but config mutation and the
+        # UI are loopback-only: this daemon has no auth.
+        return self.client_address[0] in ("127.0.0.1", "::1")
+
+    def _read_body(self):
+        """Shared bounded body read; returns bytes or None after replying."""
         try:
             length = int(self.headers.get("Content-Length", 0))
         except (TypeError, ValueError):
@@ -152,13 +196,60 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
         if length > MAX_BODY_BYTES:
             # A hostile or buggy client can declare an arbitrarily large
             # Content-Length; reading it would block this thread and buffer
-            # gigabytes. Hook payloads are small JSON objects, so refuse.
+            # gigabytes. Payloads are small JSON objects, so refuse.
             self.send_response(413)
             self.end_headers()
-            return
+            return None
         try:
-            body = self.rfile.read(length) if length > 0 else b""
+            return self.rfile.read(length) if length > 0 else b""
         except Exception:
+            return None
+
+    def _pending_restart(self, cfg: dict) -> bool:
+        restart_keys = set(CONFIG_NORMALIZERS) - LIVE_KEYS
+        return any(cfg[k] != self.boot_cfg[k] for k in restart_keys)
+
+    def do_POST(self):
+        if self.path == "/config":
+            if not self._is_local():
+                self._send_json({"error": "config is loopback-only"}, 403)
+                return
+            body = self._read_body()
+            if body is None:
+                return
+            try:
+                updates = json.loads(body.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                updates = None
+            if not isinstance(updates, dict):
+                self._send_json({"error": "expected a JSON object"}, 400)
+                return
+            unknown = set(updates) - set(CONFIG_NORMALIZERS)
+            if unknown:
+                self._send_json({"error": "unknown keys: %s" % sorted(unknown)}, 400)
+                return
+            save_config(updates)
+            cfg = load_config()
+            _apply_live(self.state, {k: cfg[k] for k in LIVE_KEYS})
+            self._send_json({
+                "ok": True,
+                "config": cfg,
+                "pending_restart": self._pending_restart(cfg),
+            })
+            return
+        if self.path == "/restart":
+            if not self._is_local():
+                self._send_json({"error": "restart is loopback-only"}, 403)
+                return
+            self._send_json({"ok": True, "restarting": True})
+            self.restart_event.set()
+            return
+        if self.path != "/event":
+            self.send_response(404)
+            self.end_headers()
+            return
+        body = self._read_body()
+        if body is None:
             return
         try:
             ev = json.loads(body.decode("utf-8"))
@@ -170,19 +261,47 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            payload = json.dumps({"ok": True, "activity": float(self.state.activity)}).encode()
+            self._send_json({"ok": True, "activity": float(self.state.activity)})
+            return
+        if self.path == "/config":
+            if not self._is_local():
+                self._send_json({"error": "config is loopback-only"}, 403)
+                return
+            cfg = load_config()
+            self._send_json({
+                "config": cfg,
+                "config_path": config_path(),
+                "live_keys": sorted(LIVE_KEYS),
+                "restart_keys": sorted(set(CONFIG_NORMALIZERS) - LIVE_KEYS),
+                "pending_restart": self._pending_restart(cfg),
+            })
+            return
+        static = _STATIC_FILES.get(self.path)
+        if static is not None and self._is_local():
+            fname, ctype = static
+            try:
+                with open(os.path.join(_WEB_DIR, fname), "rb") as f:
+                    payload = f.read()
+            except OSError:
+                self.send_response(404)
+                self.end_headers()
+                return
             self.send_response(200)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
-        else:
-            self.send_response(404)
-            self.end_headers()
+            return
+        self.send_response(404)
+        self.end_headers()
 
 
-def _make_http_server(state, port):
-    handler_cls = type("BoundHandler", (_EventHTTPHandler,), {"state": state})
+def _make_http_server(state, port, boot_cfg=None, restart_event=None):
+    handler_cls = type("BoundHandler", (_EventHTTPHandler,), {
+        "state": state,
+        "boot_cfg": boot_cfg if boot_cfg is not None else load_config(),
+        "restart_event": restart_event if restart_event is not None else threading.Event(),
+    })
     httpd = ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
     return httpd
 
@@ -241,6 +360,7 @@ def run_live():
     state = _build_theme_state(cfg, seed=int(time.time()))
 
     stop_event = threading.Event()
+    restart_event = threading.Event()
     idle_exit_s = cfg["idle_exit_min"] * 60.0
 
     def callback(outdata, frames, time_info, status):
@@ -251,7 +371,7 @@ def run_live():
             outdata[:] = np.zeros((frames, 2), dtype=np.float32)
 
     try:
-        httpd = _make_http_server(state, cfg["port"])
+        httpd = _make_http_server(state, cfg["port"], boot_cfg=cfg, restart_event=restart_event)
     except OSError as exc:
         log.error(
             "cannot listen on port %s: %s\n"
@@ -283,6 +403,9 @@ def run_live():
         ):
             while True:
                 time.sleep(1.0)
+                if restart_event.is_set():
+                    log.info("restart requested via /restart")
+                    break
                 if state.t - state.last_event_t > idle_exit_s and state.last_event_t > 0:
                     log.info("idle timeout reached, exiting")
                     break
@@ -295,6 +418,15 @@ def run_live():
         stop_event.set()
         httpd.shutdown()
         httpd.server_close()
+
+    if restart_event.is_set():
+        # Re-exec in place so restart-only config (theme, port, ...) applies
+        # without waiting for the next SessionStart hook. Streams and sockets
+        # are already closed; execv replaces this process, keeping the pid,
+        # session and nohup detachment from autostart-daemon.sh.
+        argv = [sys.executable, os.path.abspath(sys.argv[0])] + sys.argv[1:]
+        log.info("re-exec: %s", argv)
+        os.execv(sys.executable, argv)
 
 
 # --------------------------------------------------------------------------

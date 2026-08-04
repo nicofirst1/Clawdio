@@ -3,7 +3,9 @@ sonifier.py; see sonifier.py for the module overview."""
 
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 
 # --------------------------------------------------------------------------
 # Constants
@@ -97,8 +99,107 @@ def _env_theme(name: str, default: str) -> str:
     return default
 
 
+# --------------------------------------------------------------------------
+# Config file layer (written by the web UI, read on top of env vars).
+# Precedence: defaults < env vars < config file.
+# --------------------------------------------------------------------------
+
+def _norm_bool(v, default: bool) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        return v.strip().lower() not in ("0", "false", "off", "no", "")
+    return default
+
+
+def _norm_volume(v, default: float) -> float:
+    try:
+        return max(0.0, min(1.0, float(v)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _norm_idle(v, default: float) -> float:
+    try:
+        return max(0.0, float(v))
+    except (TypeError, ValueError):
+        return default
+
+
+def _norm_port(v, default: int) -> int:
+    try:
+        p = int(v)
+    except (TypeError, ValueError):
+        return default
+    return p if 1 <= p <= 65535 else default
+
+
+def _norm_theme(v, default: str) -> str:
+    if isinstance(v, str) and v.strip().lower() in (THEME_GEIGER, THEME_AMBIENT):
+        return v.strip().lower()
+    return default
+
+
+# Single source of truth for the settable config surface: key -> normalizer.
+# Used by load_config (file merge), save_config, and the /config HTTP API.
+CONFIG_NORMALIZERS = {
+    "port": _norm_port,
+    "volume": _norm_volume,
+    "mute": _norm_bool,
+    "clicks": _norm_bool,
+    "chimes": _norm_bool,
+    "drone": _norm_bool,
+    "idle_exit_min": _norm_idle,
+    "quiet": _norm_bool,
+    "theme": _norm_theme,
+}
+
+# Keys the live daemon can apply without a restart (mutated on the running
+# theme state); everything else takes effect on the next daemon start.
+LIVE_KEYS = frozenset({"volume", "mute", "clicks", "chimes", "drone"})
+
+
+def config_path() -> str:
+    return os.environ.get("SONIFIER_CONFIG") or os.path.expanduser(
+        "~/.config/agent-sonifier/config.json"
+    )
+
+
+def _read_config_file() -> dict:
+    try:
+        with open(config_path(), "r") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def save_config(updates: dict) -> dict:
+    """Merge normalized `updates` into the config file (atomic write).
+    Returns the file's new contents. Unknown keys are ignored."""
+    path = config_path()
+    data = _read_config_file()
+    eff = load_config()
+    for k, v in updates.items():
+        norm = CONFIG_NORMALIZERS.get(k)
+        if norm is not None:
+            data[k] = norm(v, eff[k])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return data
+
+
 def load_config() -> dict:
-    return dict(
+    cfg = dict(
         port=_env_int("SONIFIER_PORT", 9753),
         volume=max(0.0, min(1.0, _env_float("SONIFIER_VOLUME", 0.5))),
         mute=_env_bool_flag("SONIFIER_MUTE", False),
@@ -109,4 +210,9 @@ def load_config() -> dict:
         quiet=_env_bool_flag("SONIFIER_QUIET", False),
         theme=_env_theme("SONIFIER_THEME", THEME_AMBIENT),
     )
+    for k, v in _read_config_file().items():
+        norm = CONFIG_NORMALIZERS.get(k)
+        if norm is not None:
+            cfg[k] = norm(v, cfg[k])
+    return cfg
 

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Sonifier — Control Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Chivo+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="rack">
+  <span class="screw tl"></span><span class="screw tr"></span>
+  <span class="screw bl"></span><span class="screw br"></span>
+
+  <header class="panel-head">
+    <div class="brand">
+      <h1>Agent&nbsp;Sonifier</h1>
+      <p class="sub">ambient telemetry unit &middot; mk&nbsp;II</p>
+    </div>
+    <div class="head-right">
+      <div class="meter" id="meter" aria-label="activity meter">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div class="status" id="status"><span class="dot"></span><span class="txt">connecting</span></div>
+    </div>
+  </header>
+
+  <div class="banner" id="banner" hidden>
+    <span>staged changes need a daemon restart</span>
+    <button id="restart" class="btn-restart">restart now</button>
+  </div>
+
+  <main>
+    <section class="group" aria-labelledby="lbl-theme">
+      <h2 id="lbl-theme">Theme</h2>
+      <div class="seg" id="theme" role="radiogroup">
+        <button data-value="ambient" role="radio">Ambient</button>
+        <button data-value="geiger" role="radio">Geiger</button>
+      </div>
+      <p class="hint">applies on restart</p>
+    </section>
+
+    <section class="group wide" aria-labelledby="lbl-output">
+      <h2 id="lbl-output">Output</h2>
+      <div class="fader-row">
+        <input type="range" id="volume" min="0" max="1" step="0.01" aria-label="volume">
+        <output id="volume-val" for="volume">--</output>
+        <button id="mute" class="btn-mute" aria-pressed="false">Mute</button>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="lbl-voices">
+      <h2 id="lbl-voices">Voices</h2>
+      <div class="switches">
+        <label class="switch"><input type="checkbox" id="clicks"><i></i>
+          <span data-ambient="Rain" data-geiger="Clicks">Rain</span></label>
+        <label class="switch"><input type="checkbox" id="chimes"><i></i>
+          <span data-ambient="Gestures" data-geiger="Chimes">Gestures</span></label>
+        <label class="switch"><input type="checkbox" id="drone"><i></i>
+          <span>Drone</span></label>
+      </div>
+    </section>
+
+    <section class="group" aria-labelledby="lbl-daemon">
+      <h2 id="lbl-daemon">Daemon</h2>
+      <div class="fields">
+        <label class="field">idle exit <em>min</em>
+          <input type="number" id="idle_exit_min" min="0" step="5"></label>
+        <label class="field">port
+          <input type="number" id="port" min="1" max="65535" step="1"></label>
+        <label class="switch small"><input type="checkbox" id="quiet"><i></i>
+          <span>Quiet&nbsp;log</span></label>
+      </div>
+      <p class="hint">applies on restart</p>
+    </section>
+  </main>
+
+  <footer>
+    <span id="cfgpath">&nbsp;</span>
+    <span class="serial">no. 002-4471</span>
+  </footer>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
