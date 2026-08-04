@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import collections
 import json
+import logging
 import math
 import os
 import sys
@@ -58,6 +59,10 @@ try:
 except Exception:  # pragma: no cover - environment dependent
     _sp_signal = None
     _HAVE_SCIPY = False
+
+from logging_setup import configure as _configure_logging, get_logger
+
+log = get_logger("sonifier")
 
 # --------------------------------------------------------------------------
 # Constants
@@ -549,11 +554,7 @@ class EngineState:
         else:
             return
 
-        if not self.quiet:
-            print(
-                f"[sonifier] event={name} tool={tool_name} activity={self.activity:.3f}",
-                file=sys.stderr,
-            )
+        log.debug("event=%s tool=%s activity=%.3f", name, tool_name, self.activity)
 
     def set_pressure(self, fill):
         """Part of the small cross-theme interface: handle_event(evt) /
@@ -714,10 +715,9 @@ def _geiger_render_block(state: EngineState, n=BLOCKSIZE) -> np.ndarray:
         global _RENDER_FAULT_REPORTED
         if not _RENDER_FAULT_REPORTED:
             _RENDER_FAULT_REPORTED = True
-            print(
-                f"[sonifier] render_block fault (silencing this block; "
-                f"further occurrences suppressed): {exc!r}",
-                file=sys.stderr,
+            log.error(
+                "render_block fault (silencing this block; further "
+                "occurrences suppressed): %r", exc
             )
         out = np.zeros((n, 2), dtype=np.float32)
         try:
@@ -881,12 +881,11 @@ def _render_drone(state, out, n):
 ###############################################################################
 
 if not _HAVE_SCIPY:
-    print(
-        "[sonifier] WARNING: scipy is not importable; AmbientTheme requires "
-        "it (Freeverb damping / rain & bed filtering). Install with:\n"
+    log.warning(
+        "scipy is not importable; AmbientTheme requires it (Freeverb damping "
+        "/ rain & bed filtering). Install with:\n"
         "    pip install scipy --break-system-packages\n"
-        "GeigerTheme (SONIFIER_THEME=geiger) still works without scipy.",
-        file=sys.stderr,
+        "GeigerTheme (SONIFIER_THEME=geiger) still works without scipy."
     )
 
 # -- musical framework (brief section 1) -------------------------------------
@@ -1679,6 +1678,14 @@ SUBBASS_CAL_DB = 18.0       # L5 sub-bass weather drone (same label-vs-mix
 STEM_CAL_DB = 18.0
 STEM_DETUNE_CENTS = np.array([-9.0, 0.0, 9.0])
 STEM_LP_HZ = 520.0
+# ponytail: max gap between subagent-tagged events before we consider that
+# subagent gone. SubagentStart/Stop are unreliable (observed 4 starts vs 13
+# stops in a real daemon log), so presence is driven by ANY event carrying
+# an agent_id instead of matched start/stop counting. Subagents can pause
+# several seconds "thinking" between tool calls -- 12s is a guess at
+# covering that without the stem lingering long after the subagent is
+# actually done; tune if the stem cuts out mid-subagent or lingers too long.
+SUBAGENT_PRESENCE_DECAY_S = 12.0
 WHOOSH_CAL_DB = 30.0        # L2 bash-in-flight swell: the brief's -34 dBFS is
                             # again relative to its own -26 dBFS bed; raw, the
                             # swell measured 26 dB under this mix's 252 Hz band
@@ -1914,6 +1921,7 @@ class StemLayer:
         self.apply_lp_stage = apply_lp_stage
         self.sr = sr
         self.subagent_refcount = 0
+        self._presence = {}  # agent_id -> last_seen t (virtual clock)
         self.stem1_gain = Slew(0.0, tau=1.7)   # ~5s equal-power-ish fade-in
         self.stem2_gain = Slew(0.0, tau=1.7)
         self.stem_phase = rng.random(2)
@@ -1955,24 +1963,60 @@ class StemLayer:
 
     # -- handle_event handlers (called from AmbientTheme.handle_event) ------
 
-    def handle_subagent_start(self):
+    def note_presence(self, agent_id, t):
+        """Called on EVERY event that carries a non-empty agent_id, not just
+        SubagentStart/Stop -- a plain PreToolUse from inside a subagent keeps
+        the stem alive even when SubagentStart never arrived (see
+        SUBAGENT_PRESENCE_DECAY_S)."""
+        if not agent_id:
+            return
+        self._presence[agent_id] = t
+        self._apply_active_count(t)
+
+    def recheck_presence(self, t):
+        """Re-evaluate presence/decay without adding a new agent_id -- called
+        on events that don't carry one, so a stem fade-out happens on
+        schedule rather than only on the next tagged event."""
+        self._apply_active_count(t)
+
+    def _active_presence_count(self, t):
+        expired = [aid for aid, seen in self._presence.items()
+                   if t - seen > SUBAGENT_PRESENCE_DECAY_S]
+        for aid in expired:
+            del self._presence[aid]
+        return len(self._presence)
+
+    def _apply_active_count(self, t):
+        """Effective active count = max(presence-timer count, legacy
+        refcount) so sessions with no agent_id (older Claude Code, or a
+        manual SubagentStart/Stop-only path) still work."""
+        count = max(self._active_presence_count(t), self.subagent_refcount)
+        if count >= 1:
+            self.stem1_gain.tau = 1.7
+            self.stem1_gain.target = 1.0
+        else:
+            self.stem1_gain.tau = 2.7
+            self.stem1_gain.target = 0.0
+        if count >= 2:
+            self.stem2_gain.tau = 1.7
+            self.stem2_gain.target = 1.0
+        else:
+            self.stem2_gain.tau = 2.7
+            self.stem2_gain.target = 0.0
+
+    def handle_subagent_start(self, t=0.0):
         self.subagent_refcount += 1
         self._stem_pan_toggle = not self._stem_pan_toggle
         self.stem_pan = 0.3 if self._stem_pan_toggle else -0.3
-        self.stem1_gain.tau = 1.7
-        self.stem1_gain.target = 1.0
-        if self.subagent_refcount >= 2:
-            self.stem2_gain.tau = 1.7
-            self.stem2_gain.target = 1.0
+        self._apply_active_count(t)
 
-    def handle_subagent_stop(self):
+    def handle_subagent_stop(self, agent_id=None, t=0.0):
         self.subagent_refcount = max(0, self.subagent_refcount - 1)
-        if self.subagent_refcount < 1:
-            self.stem1_gain.tau = 2.7
-            self.stem1_gain.target = 0.0
-        if self.subagent_refcount < 2:
-            self.stem2_gain.tau = 2.7
-            self.stem2_gain.target = 0.0
+        if agent_id:
+            # Clean stop WITH agent_id: drop it immediately for a fast fade
+            # instead of waiting out the presence decay.
+            self._presence.pop(agent_id, None)
+        self._apply_active_count(t)
 
 
 class WeatherLayer:
@@ -2801,6 +2845,14 @@ class AmbientTheme:
         self.last_event_t = self.t
         tool_name = ev.get("tool_name")
         tool_input = ev.get("tool_input")
+        agent_id = ev.get("agent_id")
+        if agent_id:
+            self.stem.note_presence(agent_id, self.t)
+        else:
+            # No agent_id on this event, but still re-check presence so a
+            # previously-tagged subagent's entry expires/fades on schedule
+            # instead of only fading on its next tagged event.
+            self.stem.recheck_presence(self.t)
         rng = self._ingress_rng
 
         if name == "PreToolUse":
@@ -2912,9 +2964,9 @@ class AmbientTheme:
                 self._spawn_note(rng, e4, velocity=0.3, bell=True, i_peak=1.2,
                                  delay_s=0.18, gain_db=5.0)
         elif name == "SubagentStart":
-            self.stem.handle_subagent_start()
+            self.stem.handle_subagent_start(self.t)
         elif name == "SubagentStop":
-            self.stem.handle_subagent_stop()
+            self.stem.handle_subagent_stop(agent_id, self.t)
         elif name == "PreCompact":
             if self.gestures_enabled:
                 c3 = _midi_hz(48)
@@ -2949,12 +3001,9 @@ class AmbientTheme:
         else:
             return
 
-        if not self.quiet:
-            print(
-                f"[sonifier] event={name} tool={tool_name} activity={self.activity:.3f} "
-                f"theme=ambient",
-                file=sys.stderr,
-            )
+        log.debug(
+            "event=%s tool=%s activity=%.3f theme=ambient", name, tool_name, self.activity
+        )
 
     # -- gesture/voice spawn helpers (ingress-thread safe: only use the `rng` --
     # -- passed in, and only ever deque.append onto self._pending) ------------
@@ -3101,10 +3150,9 @@ class AmbientTheme:
             global _RENDER_FAULT_REPORTED
             if not _RENDER_FAULT_REPORTED:
                 _RENDER_FAULT_REPORTED = True
-                print(
-                    f"[sonifier] ambient render_block fault (silencing this block; "
-                    f"further occurrences suppressed): {exc!r}",
-                    file=sys.stderr,
+                log.error(
+                    "ambient render_block fault (silencing this block; further "
+                    "occurrences suppressed): %r", exc
                 )
             try:
                 self._advance(dt)
@@ -3281,7 +3329,7 @@ def run_render(events_path, out_path, seed=0):
     try:
         f = open(events_path, "r")
     except OSError as exc:
-        print(f"[sonifier] cannot read events file {events_path!r}: {exc}", file=sys.stderr)
+        log.error("cannot read events file %r: %s", events_path, exc)
         raise SystemExit(2)
     with f:
         for line in f:
@@ -3333,12 +3381,10 @@ def run_render(events_path, out_path, seed=0):
 
     out_buf = out_buf[:total_samples]
     _write_wav(out_path, out_buf, SAMPLE_RATE)
-    if not cfg["quiet"]:
-        print(
-            f"[sonifier] rendered {len(events)} events -> {out_path} "
-            f"({duration:.2f}s, {total_samples} samples)",
-            file=sys.stderr,
-        )
+    log.info(
+        "rendered %d events -> %s (%.2fs, %d samples)",
+        len(events), out_path, duration, total_samples,
+    )
 
 
 def _write_wav(path, stereo_f32, sr):
@@ -3417,7 +3463,7 @@ def _udp_recv_loop(state, port, stop_event):
     try:
         sock.bind(("0.0.0.0", port))
     except OSError as e:
-        print(f"[sonifier] UDP bind failed on port {port}: {e}", file=sys.stderr)
+        log.error("UDP bind failed on port %s: %s", port, e)
         return
     sock.settimeout(0.5)
     while not stop_event.is_set():
@@ -3431,19 +3477,19 @@ def _udp_recv_loop(state, port, stop_event):
             ev = json.loads(data.decode("utf-8"))
             state.handle_event(ev)
         except Exception:
+            log.debug("dropped malformed UDP datagram (%d bytes)", len(data), exc_info=True)
             continue
     sock.close()
 
 
 def run_live():
     if sd is None:
-        print(
-            "[sonifier] sounddevice is not available "
-            f"({_SD_IMPORT_ERROR}). Install it with:\n"
+        log.error(
+            "sounddevice is not available (%s). Install it with:\n"
             "    pip install sounddevice --break-system-packages\n"
             "and ensure a PortAudio-capable audio device is present. "
             "Offline rendering (--render) works without sounddevice.",
-            file=sys.stderr,
+            _SD_IMPORT_ERROR,
         )
         sys.exit(1)
 
@@ -3463,13 +3509,13 @@ def run_live():
     try:
         httpd = _make_http_server(state, cfg["port"])
     except OSError as exc:
-        print(
-            f"[sonifier] cannot listen on port {cfg['port']}: {exc}\n"
+        log.error(
+            "cannot listen on port %s: %s\n"
             "Another sonifier (or unrelated process) is probably already "
             "using it. Either stop it (pkill -f sonifier.py) or pick another "
             "port with SONIFIER_PORT=9800 -- remember to export the same "
             "SONIFIER_PORT for hooks/send-event.sh so events still reach it.",
-            file=sys.stderr,
+            cfg["port"], exc,
         )
         sys.exit(1)
     http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -3479,12 +3525,9 @@ def run_live():
     http_thread.start()
     udp_thread.start()
 
-    if not cfg["quiet"]:
-        print(
-            f"[sonifier] listening on port {cfg['port']} (HTTP POST /event, "
-            f"UDP, GET /health)",
-            file=sys.stderr,
-        )
+    log.info(
+        "listening on port %s (HTTP POST /event, UDP, GET /health)", cfg["port"]
+    )
 
     try:
         with sd.OutputStream(
@@ -3497,12 +3540,10 @@ def run_live():
             while True:
                 time.sleep(1.0)
                 if state.t - state.last_event_t > idle_exit_s and state.last_event_t > 0:
-                    if not cfg["quiet"]:
-                        print("[sonifier] idle timeout reached, exiting", file=sys.stderr)
+                    log.info("idle timeout reached, exiting")
                     break
                 if state.last_event_t == 0.0 and state.t > idle_exit_s:
-                    if not cfg["quiet"]:
-                        print("[sonifier] idle timeout reached, exiting", file=sys.stderr)
+                    log.info("idle timeout reached, exiting")
                     break
     except KeyboardInterrupt:
         pass
@@ -3545,6 +3586,8 @@ def run_check():
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+
+    _configure_logging(quiet=_env_bool_flag("SONIFIER_QUIET", False))
 
     if "--check" in argv:
         return run_check()

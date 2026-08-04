@@ -611,6 +611,43 @@ def test_subagent_start_at_depth_3_stays_sane():
     assert state.stem.stem2_gain.target == 1.0
 
 
+def test_subagent_stem_survives_missing_start():
+    """Real daemon logs show SubagentStart/Stop badly imbalanced (4 starts
+    vs 13 stops observed), which nets the refcount to ~0 and never keeps the
+    stem audible. A tool event carrying agent_id but no preceding
+    SubagentStart must still activate the stem (presence timer keyed by
+    agent_id), and presence must decay after SUBAGENT_PRESENCE_DECAY_S of
+    silence from that agent_id."""
+    state = make_ambient(seed=29)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    # no SubagentStart at all -- just a tagged PreToolUse
+    state.handle_event({
+        "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {},
+        "agent_id": "sub-1",
+    })
+    assert state.stem.subagent_refcount == 0
+    assert state.stem.stem1_gain.target == 1.0
+
+    # advance the virtual clock via render_block, well past the decay window
+    for _ in range(int(math.ceil((sonifier.SUBAGENT_PRESENCE_DECAY_S + 2.0) * SR / BLOCK))):
+        sonifier.render_block(state, BLOCK)
+
+    # a no-op event to trigger presence pruning/re-evaluation
+    state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {}})
+    assert state.stem.stem1_gain.target == 0.0
+
+
+def test_subagent_stem_legacy_start_stop_still_works():
+    """Backward compat: sessions with no agent_id at all (older Claude Code)
+    must still activate the stem via the plain SubagentStart/Stop path."""
+    state = make_ambient(seed=30)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({"hook_event_name": "SubagentStart"})
+    assert state.stem.stem1_gain.target == 1.0
+    state.handle_event({"hook_event_name": "SubagentStop"})
+    assert state.stem.stem1_gain.target == 0.0
+
+
 def test_precompact_gesture_gated_by_gestures_enabled():
     """PreCompact spawns a c3/a2 note sequence (spacing 0.55s) when
     gestures_enabled -- otherwise it must be silent (no gesture note)."""
