@@ -2162,6 +2162,96 @@ class RainLayer:
         return y
 
 
+class BloomLayer:
+    """L3 self-playing FM e-piano "bloom" melody (brief section 6). Holds a
+    back-reference to the parent AmbientTheme: note spawning goes through
+    theme._spawn_note (not a bloom-exclusive method -- rain's write-note and
+    handle_event's Stop/PreCompact/Notification gestures use it too, and it
+    draws from the shared render-thread RNG in the same call-order position
+    render_block always called the bloom scheduler from)."""
+
+    def __init__(self, theme):
+        self.theme = theme
+
+    def render(self, n, dt):
+        theme = self.theme
+        # second, slower-smoothed activity envelope (tau 15s) driving L3 rate
+        a_target = max(0.0, min(1.0, theme.activity))
+        alpha = 1.0 - math.exp(-dt / 15.0)
+        theme.activity_slow += (a_target - theme.activity_slow) * alpha
+
+        idle_rate = 1.0 / 45.0
+        busy_rate = 1.0 / 2.5
+        rate = idle_rate + (busy_rate - idle_rate) * theme.activity_slow
+        rate = max(rate, 1e-4)
+
+        block_dur = n / theme.sr
+        theme.next_note_dt -= block_dur
+        if theme.next_note_dt <= 0:
+            self._maybe_fire_note()
+            interval = -math.log(max(theme._rng.random(), 1e-12)) / rate
+            theme.next_note_dt = interval
+
+    def _pick_idx(self, rng, idle_mode):
+        """Pick a pool index. Brief-v2.2 section 6: melodic pool selection is
+        biased toward stepwise motion (next note within +-2 pool steps of the
+        previous) so the bloom reads as intentional phrasing rather than
+        random scatter. idle_mode restricts the candidate set to the mid
+        register (section 4: "never the top octave alone" at idle)."""
+        theme = self.theme
+        if idle_mode:
+            candidates = AMBIENT_MID_REGISTER_IDXS
+            weights = AMBIENT_MID_REGISTER_WEIGHTS
+        else:
+            candidates = np.arange(len(AMBIENT_NOTE_POOL))
+            weights = AMBIENT_NOTE_WEIGHTS
+        last_idx = theme._last_bloom_pool_idx
+        if last_idx is not None and rng.random() < STEPWISE_BIAS_PROB:
+            lo, hi = last_idx - STEPWISE_BIAS_STEPS, last_idx + STEPWISE_BIAS_STEPS
+            near = candidates[(candidates >= lo) & (candidates <= hi)]
+            if len(near) > 0:
+                near_w = AMBIENT_NOTE_WEIGHTS[near]
+                near_w = near_w / near_w.sum()
+                return int(rng.choice(near, p=near_w))
+        return int(rng.choice(candidates, p=weights))
+
+    def _maybe_fire_note(self):
+        theme = self.theme
+        # brief-v2.2 section 1 pacing floor: melodic notes min gap 2.5s when
+        # busy (idle self-play keeps its own ~1/45s Poisson clock, which is
+        # already far looser than this floor).
+        if theme.t - theme.last_note_t < NOTE_MIN_GAP_S:
+            return  # scheduler will retry next Poisson tick
+        rng = theme._rng
+        idle_mode = theme.activity_slow < BLOOM_IDLE_SLOW_ACTIVITY_THRESH
+        for _attempt in range(3):
+            idx = self._pick_idx(rng, idle_mode)
+            midi = int(AMBIENT_NOTE_POOL[idx])
+            last = theme._note_refractory.get(midi, -999.0)
+            if theme.t - last >= 10.0:
+                break
+        else:
+            return
+        velocity = 0.3 + 0.5 * (rng.random() ** 2)
+        freq = _midi_hz(midi)
+        # v2.2 section 3: "delete r=3.5 bell from routine flow" -- the bell
+        # voice is now ONLY used for the Notification/PermissionRequest
+        # gesture (handle_event), never from self-play.
+        embed_cap = NOTE_EMBED_CAP_IDLE_DB if idle_mode else NOTE_EMBED_CAP_DB
+        theme._spawn_note(rng, freq, velocity=velocity, bell=False, embed_cap_db=embed_cap)
+        theme._note_refractory[midi] = theme.t
+        theme.last_note_t = theme.t
+        theme._last_bloom_pool_idx = idx
+        if not idle_mode and rng.random() < 0.15:
+            extra = int(rng.integers(1, 3))
+            for _ in range(extra):
+                idx2 = self._pick_idx(rng, idle_mode)
+                midi2 = int(AMBIENT_NOTE_POOL[idx2])
+                spacing = rng.uniform(0.08, 0.25)
+                theme._spawn_note(rng, _midi_hz(midi2), velocity=velocity * 0.8, delay_s=spacing)
+                theme._last_bloom_pool_idx = idx2
+
+
 class AmbientTheme:
     """v2 default sound: generative ambient layers (BRIEF-v2.md). Exposes
     the same small interface as GeigerTheme: handle_event(evt), set_pressure
@@ -2299,6 +2389,7 @@ class AmbientTheme:
         self._duck_gain_z = 1.0      # smoothing state for the duck envelope
         self.failed_tool = None      # tool whose retry-success clears the shading
         self._last_bloom_pool_idx = None  # v2.2 section 6: stepwise motion bias
+        self.bloom_layer = BloomLayer(self)
 
         # L4 subagent stems
         self.stem1_gain = Slew(0.0, tau=1.7)   # ~5s equal-power-ish fade-in
@@ -2800,79 +2891,13 @@ class AmbientTheme:
         return self.rain_layer.air_stage(x, key, b, a, nch)
 
     def _render_bloom_scheduler(self, n, dt):
-        # second, slower-smoothed activity envelope (tau 15s) driving L3 rate
-        a_target = max(0.0, min(1.0, self.activity))
-        alpha = 1.0 - math.exp(-dt / 15.0)
-        self.activity_slow += (a_target - self.activity_slow) * alpha
-
-        idle_rate = 1.0 / 45.0
-        busy_rate = 1.0 / 2.5
-        rate = idle_rate + (busy_rate - idle_rate) * self.activity_slow
-        rate = max(rate, 1e-4)
-
-        block_dur = n / self.sr
-        self.next_note_dt -= block_dur
-        if self.next_note_dt <= 0:
-            self._maybe_fire_bloom_note()
-            interval = -math.log(max(self._rng.random(), 1e-12)) / rate
-            self.next_note_dt = interval
+        self.bloom_layer.render(n, dt)
 
     def _bloom_pick_idx(self, rng, idle_mode):
-        """Pick a pool index. Brief-v2.2 section 6: melodic pool selection is
-        biased toward stepwise motion (next note within +-2 pool steps of the
-        previous) so the bloom reads as intentional phrasing rather than
-        random scatter. idle_mode restricts the candidate set to the mid
-        register (section 4: "never the top octave alone" at idle)."""
-        if idle_mode:
-            candidates = AMBIENT_MID_REGISTER_IDXS
-            weights = AMBIENT_MID_REGISTER_WEIGHTS
-        else:
-            candidates = np.arange(len(AMBIENT_NOTE_POOL))
-            weights = AMBIENT_NOTE_WEIGHTS
-        last_idx = self._last_bloom_pool_idx
-        if last_idx is not None and rng.random() < STEPWISE_BIAS_PROB:
-            lo, hi = last_idx - STEPWISE_BIAS_STEPS, last_idx + STEPWISE_BIAS_STEPS
-            near = candidates[(candidates >= lo) & (candidates <= hi)]
-            if len(near) > 0:
-                near_w = AMBIENT_NOTE_WEIGHTS[near]
-                near_w = near_w / near_w.sum()
-                return int(rng.choice(near, p=near_w))
-        return int(rng.choice(candidates, p=weights))
+        return self.bloom_layer._pick_idx(rng, idle_mode)
 
     def _maybe_fire_bloom_note(self):
-        # brief-v2.2 section 1 pacing floor: melodic notes min gap 2.5s when
-        # busy (idle self-play keeps its own ~1/45s Poisson clock, which is
-        # already far looser than this floor).
-        if self.t - self.last_note_t < NOTE_MIN_GAP_S:
-            return  # scheduler will retry next Poisson tick
-        rng = self._rng
-        idle_mode = self.activity_slow < BLOOM_IDLE_SLOW_ACTIVITY_THRESH
-        for _attempt in range(3):
-            idx = self._bloom_pick_idx(rng, idle_mode)
-            midi = int(AMBIENT_NOTE_POOL[idx])
-            last = self._note_refractory.get(midi, -999.0)
-            if self.t - last >= 10.0:
-                break
-        else:
-            return
-        velocity = 0.3 + 0.5 * (rng.random() ** 2)
-        freq = _midi_hz(midi)
-        # v2.2 section 3: "delete r=3.5 bell from routine flow" -- the bell
-        # voice is now ONLY used for the Notification/PermissionRequest
-        # gesture (handle_event), never from self-play.
-        embed_cap = NOTE_EMBED_CAP_IDLE_DB if idle_mode else NOTE_EMBED_CAP_DB
-        self._spawn_note(rng, freq, velocity=velocity, bell=False, embed_cap_db=embed_cap)
-        self._note_refractory[midi] = self.t
-        self.last_note_t = self.t
-        self._last_bloom_pool_idx = idx
-        if not idle_mode and rng.random() < 0.15:
-            extra = int(rng.integers(1, 3))
-            for _ in range(extra):
-                idx2 = self._bloom_pick_idx(rng, idle_mode)
-                midi2 = int(AMBIENT_NOTE_POOL[idx2])
-                spacing = rng.uniform(0.08, 0.25)
-                self._spawn_note(rng, _midi_hz(midi2), velocity=velocity * 0.8, delay_s=spacing)
-                self._last_bloom_pool_idx = idx2
+        self.bloom_layer._maybe_fire_note()
 
     def _render_subagent_stems(self, dry, n, dt):
         self.stem_layer.render(dry, n, dt)
