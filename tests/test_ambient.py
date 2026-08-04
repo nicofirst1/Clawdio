@@ -978,6 +978,118 @@ def test_v23_drop_timbre_switching_produces_distinct_nonsilent_banks():
                 f"{names[i]} and {names[j]} produced identical grains")
 
 
+def test_v24_done_cadence_v22_matches_legacy_stop_handling():
+    """v2.4 regression guard for the cadence/settled-idle change: done_cadence
+    ="v22" must reproduce the exact legacy Stop handling (same RNG draws for
+    the cadence melody, same -33dB/6s bed hold, no settled-bloom throttling).
+    Verified via a full render MD5 match in research/BRIEF-v2.4.md; this is
+    the fast in-process regression pin (same trick as drop_timbre="noise")."""
+    state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=9,
+                                  cfg=sonifier.AmbientConfig(done_cadence="v22"))
+    assert state.bed.done_cadence == "v22"
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({"hook_event_name": "Stop"})
+    assert state.bed.easing_after_stop_until == pytest.approx(state.t + 6.0)
+
+
+def test_v24_authentic_cadence_lands_on_tonic_with_bass_root():
+    """v2.4 (research/BRIEF-v2.4.md): the default cadence melody always lands
+    on C4 (the tonic), never G4 (the dominant/half-cadence v2.2 sometimes
+    used), and Stop additionally queues a bass-register root note (ROOT_C2)
+    timed to land at the same instant as the melody's last note -- the
+    "authentic cadence" (V-I, root-position tonic in the bass) that reads as
+    resolved rather than just a melody that stopped."""
+    rng = np.random.default_rng(1)
+    for _ in range(20):
+        notes = sonifier._build_cadence_notes_v24(rng)
+        land_midi, land_hz = sonifier._nearest_pool_note(60)
+        assert notes[-1] == pytest.approx(land_hz), "v2.4 cadence must always land on C4"
+
+    state = make_ambient(seed=10)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    for _ in range(int(4.0 * SR / BLOCK)):
+        sonifier.render_block(state, BLOCK)
+    state._pending.clear()
+    state.handle_event({"hook_event_name": "Stop"})
+    voices = list(state._pending)
+    assert voices, "expected the Stop cadence to queue voices"
+    # a bass-register root note means at least one queued voice's dominant
+    # energy sits near ROOT_C2 (65.4 Hz) rather than only the C4 melody
+    # register (~262 Hz+) -- checked via zero-crossing rate as a cheap
+    # pitch-height proxy (a low sine crosses zero far less often per second
+    # than a note two octaves higher).
+    def approx_zcr(buf):
+        mono = buf.mean(axis=1)
+        return float(np.sum(np.abs(np.diff(np.sign(mono))) > 0)) * SR / (2.0 * len(mono))
+    zcrs = [approx_zcr(v["buf"]) for v in voices if len(v["buf"]) > 200]
+    assert zcrs and min(zcrs) < 150.0, (
+        f"expected a bass-register (~65Hz) voice among the cadence notes, "
+        f"lowest ZCR-estimated pitch was {min(zcrs):.0f}Hz-ish (zcrs={[round(z) for z in zcrs]})")
+
+
+def test_v24_settled_bed_dips_deeper_than_v22_after_stop():
+    """research/BRIEF-v2.4.md objective gate (bed leg): the post-Stop bed
+    level target is measurably lower in v2.4 than v2.2's legacy hold, and
+    v2.4's hold lasts SETTLED_HOLD_S (20s) rather than 6s."""
+    state = make_ambient(seed=11)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({"hook_event_name": "Stop"})
+    target_v24, tau_v24 = state.bed._bed_target_db(state.t + 1.0, state.last_event_t, state.session_start_t)
+    assert target_v24 == sonifier.SETTLED_BED_DB
+    assert target_v24 < -33.0, "v2.4 settled target must be deeper than v2.2's -33dB hold"
+
+    state22 = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=11,
+                                    cfg=sonifier.AmbientConfig(done_cadence="v22"))
+    state22.handle_event({"hook_event_name": "SessionStart"})
+    state22.handle_event({"hook_event_name": "Stop"})
+    target_v22, _ = state22.bed._bed_target_db(state22.t + 1.0, state22.last_event_t, state22.session_start_t)
+    assert target_v22 == -33.0
+    assert target_v24 < target_v22 - 4.0, "v2.4 settled bed must sit well below v2.2's post-Stop hold"
+
+    # v2.4's settled window (20s) outlasts v2.2's (6s): at t=Stop+10s, v2.2
+    # has already fallen back to the ordinary idle ladder while v2.4 is
+    # still in its settled hold.
+    late_v24, _ = state.bed._bed_target_db(state.t + 10.0, state.last_event_t, state.session_start_t)
+    late_v22, _ = state22.bed._bed_target_db(state22.t + 10.0, state22.last_event_t, state22.session_start_t)
+    assert late_v24 == sonifier.SETTLED_BED_DB, "v2.4 should still be settled 10s after Stop"
+    assert late_v22 != -33.0, "v2.2's 6s hold should have already expired 10s after Stop"
+
+
+def test_v24_settled_bloom_rate_is_reduced():
+    """research/BRIEF-v2.4.md objective gate (bloom leg): self-play fires
+    measurably less often while settled than during ordinary idle. Checked
+    against the engine's own dispatch count (same technique
+    test_activity_high_vs_low_render_differ uses for drops) rather than
+    acoustic onset-counting -- at bloom's ~1/45-128s mean inter-note
+    interval a 20s acoustic window is too short for onset-counting to be
+    anything but noise (measured directly: v2.2/v2.4 settled-window onset
+    counts in the bloom register are statistically indistinguishable at
+    that timescale, see analyze_render.py's N6 comment)."""
+    def count_bloom_fires(settled, n_blocks):
+        state = make_ambient(seed=12)
+        fired = [0]
+        orig = state.bloom._maybe_fire_note
+        def counted(*a, **kw):
+            before = state.bloom.last_note_t
+            orig(*a, **kw)
+            if state.bloom.last_note_t != before:
+                fired[0] += 1
+        state.bloom._maybe_fire_note = counted
+        for _ in range(n_blocks):
+            state.bloom.render(BLOCK, BLOCK / SR, state.t, activity=0.0,
+                               activity_slow=0.0, settled=settled)
+            state.t += BLOCK / SR
+        return fired[0]
+
+    n_blocks = int(math.ceil(600.0 * SR / BLOCK))  # 10 simulated minutes
+    idle_fires = count_bloom_fires(settled=False, n_blocks=n_blocks)
+    settled_fires = count_bloom_fires(settled=True, n_blocks=n_blocks)
+    assert idle_fires > 0, "expected some idle self-play over 10 simulated minutes"
+    assert settled_fires < idle_fires, (
+        f"settled bloom rate should be lower than ordinary idle: "
+        f"idle={idle_fires} settled={settled_fires}")
+
+
 def test_v22_reverb_rt60_in_target_range():
     """BRIEF-v2.2.md section 2: warm-room reverb RT60 target 1.0-2.2s (was
     ~3-4s). Schroeder backward-integration T20 estimate off the Freeverb
