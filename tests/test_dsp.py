@@ -510,6 +510,40 @@ def test_udp_ingress_survives_malformed_datagrams():
         t.join(timeout=2.0)
 
 
+def test_send_event_delivers_without_timeout_binary(tmp_path):
+    # Regression: send-event.sh gated every UDP send behind `timeout 1 ...`,
+    # but macOS ships no `timeout` (nor `gtimeout` by default), so every send
+    # silently failed and no event ever reached the daemon. Force the
+    # timeout-absent condition on any host by running the script under a PATH
+    # that contains only the essentials it needs -- no timeout/gtimeout -- and
+    # assert the packet still arrives.
+    import shutil
+    import socket as _socket
+    import subprocess
+
+    script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "hooks", "send-event.sh")
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for name in ("bash", "head", "cat"):  # nc/python3/timeout deliberately excluded
+        src = shutil.which(name)
+        assert src, f"{name} required for this test"
+        os.symlink(src, bindir / name)
+
+    probe = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+    probe.bind(("127.0.0.1", 0))
+    port = probe.getsockname()[1]
+    probe.settimeout(2.0)
+
+    env = {"PATH": str(bindir), "SONIFIER_PORT": str(port), "SONIFIER_HOST": "127.0.0.1"}
+    payload = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Bash"})
+    subprocess.run([shutil.which("bash"), script], input=payload.encode(),
+                   env=env, check=True, timeout=5)
+    data, _ = probe.recvfrom(65536)
+    probe.close()
+    assert json.loads(data.decode())["hook_event_name"] == "PostToolUse"
+
+
 def test_env_bool_flag_accepts_off_and_no():
     for val, expected in [("0", False), ("false", False), ("off", False), ("no", False),
                           ("OFF", False), ("1", True), ("true", True), ("yes", True)]:

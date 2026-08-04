@@ -26,16 +26,29 @@ payload="$(head -c 8192)"
 # Nothing to send.
 [ -z "$payload" ] && exit 0
 
+# Optional bounded-time wrapper. macOS ships no `timeout` (coreutils installs
+# it as `gtimeout`); when neither exists, run the send directly. Every send
+# path below is already non-blocking (/dev/udp write, `nc -w0`, one sendto),
+# so the wrapper is belt-and-suspenders, not load-bearing — gating on a
+# missing `timeout` silently dropped every event on macOS.
+if command -v timeout >/dev/null 2>&1; then
+    TO="timeout 1"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TO="gtimeout 1"
+else
+    TO=""
+fi
+
 # bash /dev/udp pseudo-device path (requires bash, not sh/dash; not
 # available under `set -o posix` or some restricted/minimal bash builds).
-printf '%s' "$payload" | timeout 1 bash -c "cat > /dev/udp/${HOST}/${PORT}" 2>/dev/null && exit 0
+printf '%s' "$payload" | $TO bash -c "cat > /dev/udp/${HOST}/${PORT}" 2>/dev/null && exit 0
 
 if command -v nc >/dev/null 2>&1; then
-    printf '%s' "$payload" | timeout 1 nc -4u -w0 "$HOST" "$PORT" 2>/dev/null && exit 0
+    printf '%s' "$payload" | $TO nc -4u -w0 "$HOST" "$PORT" 2>/dev/null && exit 0
 fi
 
 if command -v python3 >/dev/null 2>&1; then
-    printf '%s' "$payload" | timeout 1 python3 -c '
+    printf '%s' "$payload" | $TO python3 -c '
 import socket, sys
 data = sys.stdin.buffer.read()
 if data:
