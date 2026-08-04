@@ -133,6 +133,38 @@ def centroid_and_hf(x, sr, hf_cut=5000.0):
     return cen, hf
 
 
+# v2.3 additions (lit-review-annoyance-2026-08-04.md recs #1-2): measurable
+# "hiss/annoyance" proxies, added after blind rounds 2-3 found timbre (not
+# density) was the dominant complaint against v2.2. Thresholds calibrated the
+# same way every other criterion in this file is: measure the failing
+# control (v2.2's shipped render) first, then set the target ~20% below it --
+# see research/BRIEF-v2.3.md for the exact measured numbers this was
+# calibrated against (realistic-session.jsonl, steady window, v2.2 vs v2.3).
+
+
+def spectral_flatness(x, sr):
+    """Wiener entropy: geometric mean / arithmetic mean of the power
+    spectrum. ~1.0 for white noise, ~0 for pure tones/harmonic content --
+    the direct proxy for "reads as noise vs. reads as tone" (lit-review
+    rec #1)."""
+    f, p = welch_psd(x, sr)
+    p = np.maximum(p, 1e-30)
+    gm = float(np.exp(np.mean(np.log(p))))
+    am = float(np.mean(p))
+    return gm / am
+
+
+def brightness_ratio(x, sr, cut=3000.0):
+    """Fraction of spectral power above `cut` Hz -- a coarse, cheap proxy for
+    Zwicker sharpness (lit-review rec #2) without a full Bark-scale
+    transform. Targets the specific "hiss" register the v2.2 noise-tick
+    drops and air bed occupied (README: drop grains centered 1.8-3.5kHz)."""
+    f, p = welch_psd(x, sr)
+    tot = float(np.sum(p))
+    hf = float(np.sum(p[f > cut]))
+    return hf / max(tot, 1e-30)
+
+
 # Fundamentals of the theme's *intended* sustained layers (BRIEF section 2):
 # C1 sub-bass weather, C2/C3 bed pad, G2 + C4 subagent stems. Section 7 item 5
 # exempts "the intended drone fundamental region" (<=15 dB rather than <=12).
@@ -464,6 +496,18 @@ def run_battery(x, sr, steady=None, label=""):
     cen, hf = centroid_and_hf(ms, sr)
     rep.add("2a HF>5k fraction", "<= 10%", f"{100 * hf:.2f}%", hf <= 0.10)
     rep.add("2b' centroid (v2.2)", "350..1200 Hz", f"{cen:.0f} Hz", 350.0 <= cen <= 1200.0)
+
+    # 1c/1d (v2.3, lit-review-annoyance recs #1-2): spectral flatness and
+    # >3kHz brightness ratio. Thresholds are 20% below the measured v2.2
+    # shipped render on realistic-session.jsonl's steady window (flatness
+    # 0.001095, brightness 0.005118 -- see research/BRIEF-v2.3.md); v2.2
+    # fails both, v2.3 passes both, by construction of the threshold.
+    flat = spectral_flatness(ms, sr)
+    rep.add("1c spectral flatness (v2.3)", "<= 0.000876", f"{flat:.6f}", flat <= 0.000876,
+            note="Wiener entropy, geometric/arithmetic mean of PSD; v2.2 control measures ~0.001095")
+    bright = brightness_ratio(ms, sr)
+    rep.add("1d brightness >3kHz (v2.3)", "<= 0.41%", f"{100 * bright:.2f}%", bright <= 0.004095,
+            note="fraction of spectral power above 3kHz; v2.2 control measures ~0.51%")
 
     # 3. slow AM 0.5-10 Hz (coherent component; raw max reported alongside)
     d_slow = env_mod_coherent(ms, sr, (0.5, 10.0), env_lp=30.0, nfft_s=4.0)

@@ -1697,8 +1697,14 @@ AIR_WASH_BOOST_HZ = 300.0      # extra brightening applied under the same crossf
 # -- see the "VERIFIER re-tune" comment above; lowering AIR_TILT_HI further
 # risks re-breaking that floor, so the level cut is the primary lever):
 AIR_V23_LEVEL_CUT_DB = -4.0     # extra trim on top of AIR_CAL_DB, both idle and active
-AIR_V23_HARD_CEILING_HZ = 3200.0  # hard lowpass ceiling on the air's own upper
-                                   # tilt corner (was uncapped at 4000Hz active)
+AIR_V23_HARD_CEILING_HZ = 2800.0  # hard lowpass ceiling on the air's own upper
+                                   # tilt corner (was uncapped at 4000Hz active).
+                                   # Calibrated against tools/analyze_render.py's
+                                   # flatness/brightness criteria (rec #1-2): this
+                                   # value gets both metrics to ~20-25% below the
+                                   # measured v2.2 baseline while keeping the
+                                   # section 7 centroid floor (>=350Hz) comfortably
+                                   # clear on every render checked.
 
 _PINK_POLES = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
 
