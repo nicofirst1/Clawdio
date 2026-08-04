@@ -2466,20 +2466,20 @@ class AmbientTheme:
         self.session_ended = False
         self.session_end_t = None
 
-        # Voice pool (drops + bloom notes + gestures) must exist before the
-        # layer constructors below, since RainLayer's ctor doesn't need it
-        # but layers' render() methods call self._queue_voice via the bound
-        # method reference captured at construction time either way. `voices`
-        # is owned exclusively by the render/audio thread. Everything that
-        # wants to start a voice -- including handle_event on an HTTP/UDP
-        # ingress thread -- appends a ready-made buffer to the bounded
-        # `_pending` deque instead; the render thread drains it at the top of
-        # each block (_collect_voices). deque.append/popleft are individually
-        # atomic under the GIL, so this needs no lock, and unlike the
-        # previous design the ingress thread never does pop(0)/insert(0) on
-        # the list the mixer is walking (that could re-index a voice mid-mix
-        # or resurrect an already-mixed one). MAX_PENDING_VOICES bounds an
-        # event flood the same way MAX_ACTIVE_CHIMES does for v1.
+        # Voice pool (drops + bloom notes + gestures). Built before the layer
+        # constructors below since they pass self._queue_voice (a bound
+        # method) into RainLayer/BloomLayer's constructors and that method
+        # reads self._pending. `voices` is owned exclusively by the render/
+        # audio thread. Everything that wants to start a voice -- including
+        # handle_event on an HTTP/UDP ingress thread -- appends a ready-made
+        # buffer to the bounded `_pending` deque instead; the render thread
+        # drains it at the top of each block (_collect_voices).
+        # deque.append/popleft are individually atomic under the GIL, so this
+        # needs no lock, and unlike the previous design the ingress thread
+        # never does pop(0)/insert(0) on the list the mixer is walking (that
+        # could re-index a voice mid-mix or resurrect an already-mixed one).
+        # MAX_PENDING_VOICES bounds an event flood the same way
+        # MAX_ACTIVE_CHIMES does for v1.
         self.voices = []
         self._pending = collections.deque()
 
