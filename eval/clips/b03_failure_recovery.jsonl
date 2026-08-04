@@ -1,0 +1,13 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "fix the flaky test"}}
+{"t": 5.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 6.5, "event": {"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"}}
+{"t": 13.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "t.py"}}}
+{"t": 13.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 24.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "t.py"}}}
+{"t": 24.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 35.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "t.py"}}}
+{"t": 35.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 46.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 47.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 57.0, "event": {"hook_event_name": "Stop"}}

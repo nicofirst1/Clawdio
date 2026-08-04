@@ -1,0 +1,51 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "do a bunch of stuff"}}
+{"t": 4.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 4.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 7.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 7.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 10.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 10.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 13.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 13.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 14.2, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 14.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 15.4, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 15.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 16.6, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 17.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 17.8, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 18.2, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 19.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 19.175, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 19.35, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 19.525, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 19.7, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 19.875, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 20.05, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 20.225, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 20.4, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 20.575, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 20.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 20.925, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 21.1, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 21.275, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 21.45, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 21.625, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 21.8, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 21.975, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 22.15, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 22.325, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 22.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 22.675, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 22.85, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 23.025, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 23.2, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 23.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 24.7, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 25.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 26.2, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 26.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 27.7, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "z.py", "command": "pytest"}}}
+{"t": 28.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 31.2, "event": {"hook_event_name": "Stop"}}

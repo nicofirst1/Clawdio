@@ -1,0 +1,17 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 2.06, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 2.9, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 3.46, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 4.3, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 4.86, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 5.7, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 6.26, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 7.1, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 7.66, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 8.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 9.06, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 9.9, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 10.46, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 11.3, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "b.py"}}}
+{"t": 11.86, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}

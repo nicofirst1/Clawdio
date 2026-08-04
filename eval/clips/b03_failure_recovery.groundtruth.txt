@@ -1,0 +1,16 @@
+b03_failure_recovery -- ground truth
+A Bash failure (knock, bed darkens/shades toward vi) followed by investigation and a successful retry (filter lifts back over ~5s), then Stop.
+
+final outcome: success after one failure+recovery
+
+timeline:
+     0.0s  session start
+     1.0s  first prompt
+     5.0s  Bash (running tests)
+     6.5s  FAILURE (knock, room darkens)
+    13.0s  Read (investigating)
+    24.0s  Edit (investigating)
+    35.0s  Read (investigating)
+    46.0s  Bash retry
+    47.5s  RETRY SUCCEEDS (light returns)
+    57.0s  Stop (success cadence)

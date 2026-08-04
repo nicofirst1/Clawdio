@@ -1,0 +1,81 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 1.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 1.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 1.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 1.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 1.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 1.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 1.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 2.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 2.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 2.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 2.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 2.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 2.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 2.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 2.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 3.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 3.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 3.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 3.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 3.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 3.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 3.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 3.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 4.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 4.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 4.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 4.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 4.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 4.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 4.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 4.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 5.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 5.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 5.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 5.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 5.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 5.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 5.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 5.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 6.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 6.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 6.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 6.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 6.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 6.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 6.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 6.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 7.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 7.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 7.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 7.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 7.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 7.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 7.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 7.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 8.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 8.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 8.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 8.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 8.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 8.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 8.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 8.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 9.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 9.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 9.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 9.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 9.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 9.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 9.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 9.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 10.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 10.1, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 10.25, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 10.35, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 10.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 10.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 10.75, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "pytest"}}}
+{"t": 10.85, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}

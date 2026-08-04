@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>claude-geiger v2.2 -- listener scoring sheets</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    color: #1a1a1a;
+    margin: 0;
+    padding: 0;
+    background: #e9e9e9;
+  }
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    background: #222; color: #fff;
+    padding: 10px 16px; display: flex; gap: 12px; align-items: center;
+    font-family: Arial, Helvetica, sans-serif; font-size: 13px;
+  }
+  .toolbar button {
+    font-family: inherit; font-size: 13px; padding: 6px 12px;
+    border: 1px solid #666; background: #333; color: #fff; border-radius: 4px; cursor: pointer;
+  }
+  .toolbar button:hover { background: #444; }
+  .toolbar label { display: flex; gap: 6px; align-items: center; }
+  .toolbar input[type="number"] { width: 3em; }
+  .sheet {
+    background: #fff;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 12px auto;
+    padding: 14mm 14mm 10mm 14mm;
+    box-shadow: 0 0 6px rgba(0,0,0,0.25);
+    page-break-after: always;
+    font-size: 11.5px;
+  }
+  .sheet:last-child { page-break-after: auto; }
+  h1.title { font-size: 18px; margin: 0 0 2px 0; }
+  h2.clipname { font-size: 15px; margin: 0 0 8px 0; color: #333; font-family: monospace; }
+  .meta-row { display: flex; gap: 24px; margin-bottom: 10px; font-family: Arial, sans-serif; font-size: 11px; }
+  .meta-row .field { flex: 1; border-bottom: 1px solid #999; padding-bottom: 2px; }
+  section { margin-bottom: 10px; }
+  section > h3 {
+    font-family: Arial, Helvetica, sans-serif; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 0.03em; background: #eee; padding: 3px 6px; margin: 0 0 6px 0; border-left: 4px solid #555;
+  }
+  .probe { margin-bottom: 7px; }
+  .probe .q { font-weight: bold; margin-bottom: 3px; }
+  .cards { display: flex; gap: 8px; }
+  .card { flex: 1; border: 1px solid #999; border-radius: 4px; padding: 4px; text-align: center; }
+  .card svg { width: 100%; height: 34px; display: block; }
+  .card label { display: block; font-size: 10px; margin-top: 2px; font-family: Arial, sans-serif; }
+  .inline-fields { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-family: Arial, sans-serif; }
+  .inline-fields .opt { display: flex; gap: 4px; align-items: center; }
+  table.sd { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10.5px; }
+  table.sd td { padding: 2px 4px; vertical-align: middle; }
+  table.sd td.left { text-align: right; width: 26%; }
+  table.sd td.right { text-align: left; width: 26%; }
+  table.sd td.scale { text-align: center; }
+  table.sd .dot-row { display: flex; justify-content: space-between; }
+  table.sd .dot { width: 12px; height: 12px; border: 1px solid #333; border-radius: 50%; display: inline-block; }
+  table.likert { width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10.5px; }
+  table.likert td, table.likert th { padding: 2px 4px; text-align: center; border-bottom: 1px dotted #ccc; }
+  table.likert td.label { text-align: left; width: 40%; }
+  table.likert th { font-weight: normal; font-size: 9.5px; color: #555; }
+  .icben-scale { display: flex; justify-content: space-between; font-family: Arial, sans-serif; font-size: 10px; }
+  .icben-scale .cell { text-align: center; width: 8%; }
+  .freetext-line { border-bottom: 1px solid #999; height: 14px; margin-top: 3px; }
+  .control-item { display: flex; justify-content: space-between; align-items: center; font-family: Arial, sans-serif; font-size: 10.5px; margin-bottom: 4px; }
+  .note { font-family: Arial, sans-serif; font-size: 9.5px; color: #777; font-style: italic; }
+  @media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .sheet { box-shadow: none; margin: 0; width: auto; min-height: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <strong>claude-geiger v2.2 scoring sheets</strong>
+  <span>&mdash; self-contained, no external resources. Print or fill on-screen.</span>
+  <button onclick="window.print()">Print / Save as PDF</button>
+  <label>Listener ID <input type="text" id="listenerIdInput" size="6" placeholder="L1"></label>
+  <button onclick="applyListenerId()">Apply to all sheets</button>
+</div>
+
+<div id="sheets"></div>
+
+<script>
+// ---------------------------------------------------------------------
+// Clip metadata. Order here is the DEFAULT order only -- actual playback
+// order must be rotated per listener per eval/README.md; this file does
+// not enforce order, it just needs one page per clip.
+// ---------------------------------------------------------------------
+var BLOCK_A = [
+  ["a01_sparse_rain", "Block A -- vocabulary"],
+  ["a02_dense_rain", "Block A -- vocabulary"],
+  ["a03_write_notes", "Block A -- vocabulary"],
+  ["a04_knock", "Block A -- vocabulary"],
+  ["a05_subagent_choir", "Block A -- vocabulary"],
+  ["a06_pressure_weather", "Block A -- vocabulary"],
+  ["a07_done_cadence", "Block A -- vocabulary"],
+  ["a08_needs_you_chime", "Block A -- vocabulary"]
+];
+var BLOCK_B = [
+  ["b01_calm_success", "Block B -- scenario"],
+  ["b02_busy_success", "Block B -- scenario"],
+  ["b03_failure_recovery", "Block B -- scenario"],
+  ["b04_busy_subagents_unresolved", "Block B -- scenario"]
+];
+
+var SD_PAIRS = [
+  ["Calm", "Frantic"],
+  ["In control", "Overwhelming"],
+  ["Pleasant", "Annoying"],
+  ["Natural", "Mechanical"],
+  ["Informative", "Meaningless"],
+  ["Relaxing", "Stressful"],
+  ["Predictable", "Erratic"],
+  ["Could tolerate for hours", "Could tolerate for minutes only"]
+];
+
+var ISO_ITEMS = ["Pleasant", "Vibrant", "Eventful", "Chaotic", "Annoying", "Monotonous", "Uneventful", "Calm"];
+
+var CONTOUR_CARDS = [
+  { id: "flat", label: "Steady / flat throughout", path: "M2,20 L58,20" },
+  { id: "rising", label: "Slowly rising the whole time", path: "M2,28 L58,6" },
+  { id: "spike", label: "Calm, then a sudden spike, then drop", path: "M2,25 L22,25 L30,4 L38,25 L58,25" },
+  { id: "dip_recover", label: "Calm, dips/darkens, then recovers", path: "M2,10 L20,10 L30,28 L45,28 L58,8" }
+];
+
+function svgCard(pathD) {
+  return '<svg viewBox="0 0 60 34" preserveAspectRatio="none">' +
+         '<path d="' + pathD + '" fill="none" stroke="#333" stroke-width="2"/></svg>';
+}
+
+function dotScale(name, n, lowLabel, highLabel) {
+  var html = '<div class="dot-row" style="font-family:Arial,sans-serif;font-size:9.5px;">';
+  html += '<span style="width:14%;text-align:right;padding-right:4px;">' + (lowLabel || '') + '</span>';
+  for (var i = 1; i <= n; i++) {
+    html += '<label style="display:flex;flex-direction:column;align-items:center;">' +
+            '<input type="radio" name="' + name + '" value="' + i + '"><span>' + i + '</span></label>';
+  }
+  html += '<span style="width:14%;text-align:left;padding-left:4px;">' + (highLabel || '') + '</span>';
+  html += '</div>';
+  return html;
+}
+
+function clipPageHTML(clipId, blockLabel, includeOutcomeProbes) {
+  var id = clipId;
+  var h = '';
+  h += '<h1 class="title">claude-geiger v2.2 -- listener response sheet</h1>';
+  h += '<h2 class="clipname">' + blockLabel + ' &nbsp;/&nbsp; clip: ' + id + '</h2>';
+  h += '<div class="meta-row">' +
+       '<div class="field">Listener ID: <span class="lid-fill" data-lid></span></div>' +
+       '<div class="field">Date: ______________</div>' +
+       '<div class="field">Needed a repeat? &nbsp;Y / N</div>' +
+       '</div>';
+
+  // -- comprehension probes --
+  h += '<section><h3>Comprehension</h3>';
+
+  h += '<div class="probe"><div class="q">1. Which best matches how "busy" the sound felt over time?</div>';
+  h += '<div class="cards">';
+  CONTOUR_CARDS.forEach(function(c) {
+    h += '<div class="card"><label><input type="radio" name="' + id + '_contour" value="' + c.id + '">' +
+         svgCard(c.path) + c.label + '</label></div>';
+  });
+  h += '</div></div>';
+
+  h += '<div class="probe"><div class="q">2. Did anything go wrong during this recording?</div>';
+  h += '<div class="inline-fields">' +
+       '<span class="opt"><input type="radio" name="' + id + '_wrong" value="yes">Yes</span>' +
+       '<span class="opt"><input type="radio" name="' + id + '_wrong" value="no">No</span>' +
+       '<span>If yes, roughly when (seconds into the clip, &plusmn;10s)? <span class="freetext-line" style="display:inline-block;width:80px;"></span></span>' +
+       '</div></div>';
+
+  h += '<div class="probe"><div class="q">3. How did it end?</div>';
+  h += '<div class="inline-fields">' +
+       '<span class="opt"><input type="radio" name="' + id + '_outcome" value="succeeded">Succeeded / finished okay</span>' +
+       '<span class="opt"><input type="radio" name="' + id + '_outcome" value="failed">Failed / ended badly</span>' +
+       '<span class="opt"><input type="radio" name="' + id + '_outcome" value="unresolved">Still going / can\'t tell / not finished</span>' +
+       '</div></div>';
+
+  h += '<div class="probe"><div class="q">4. Did it feel like one thing happening, or several things at once?</div>';
+  h += '<div class="inline-fields">' +
+       '<span class="opt"><input type="radio" name="' + id + '_onevsseveral" value="one">One thing</span>' +
+       '<span class="opt"><input type="radio" name="' + id + '_onevsseveral" value="several">Several things</span>' +
+       '</div></div>';
+  h += '</section>';
+
+  // -- semantic differential --
+  h += '<section><h3>How did it feel? (mark one point on each line)</h3>';
+  h += '<table class="sd"><tr><th></th>' +
+       '<th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th></th></tr>';
+  SD_PAIRS.forEach(function(p, i) {
+    var name = id + '_sd' + i;
+    h += '<tr><td class="left">' + p[0] + '</td>';
+    for (var v = 1; v <= 7; v++) {
+      h += '<td class="scale"><input type="radio" name="' + name + '" value="' + v + '"></td>';
+    }
+    h += '<td class="right">' + p[1] + '</td></tr>';
+  });
+  h += '</table></section>';
+
+  // -- ISO 12913 circumplex --
+  h += '<section><h3>ISO 12913 &mdash; rate your agreement (1 = strongly disagree, 5 = strongly agree)</h3>';
+  h += '<table class="likert"><tr><th class="label">This sound was&hellip;</th>' +
+       '<th>1<br>disagree</th><th>2</th><th>3</th><th>4</th><th>5<br>agree</th></tr>';
+  ISO_ITEMS.forEach(function(item) {
+    var name = id + '_iso_' + item.toLowerCase();
+    h += '<tr><td class="label">' + item + '</td>';
+    for (var v = 1; v <= 5; v++) {
+      h += '<td><input type="radio" name="' + name + '" value="' + v + '"></td>';
+    }
+    h += '</tr>';
+  });
+  h += '</table></section>';
+
+  // -- ICBEN --
+  h += '<section><h3>ICBEN annoyance item</h3>';
+  h += '<div class="probe"><div class="q">Imagine this sound playing near you for an hour while you did your own things. ' +
+       'How bothered, disturbed, or annoyed would you feel?</div>';
+  h += '<div class="icben-scale">';
+  for (var v = 0; v <= 10; v++) {
+    h += '<label class="cell"><input type="radio" name="' + id + '_icben" value="' + v + '"><br>' + v + '</label>';
+  }
+  h += '</div><div class="inline-fields" style="justify-content:space-between;font-size:9.5px;">' +
+       '<span>0 = not at all</span><span>10 = extremely</span></div></div></section>';
+
+  // -- control items --
+  h += '<section><h3>Control items</h3>';
+  h += '<div class="control-item"><span>I could tell what would happen next.</span>' +
+       dotScale(id + '_ctrl_predict', 5, 'disagree', 'agree') + '</div>';
+  h += '<div class="control-item"><span>The sound felt out of control.</span>' +
+       dotScale(id + '_ctrl_outofcontrol', 5, 'disagree', 'agree') + '</div>';
+  h += '</section>';
+
+  h += '<div class="note">Block A clips have no true "outcome" &mdash; if the clip is too short to judge Q2/Q3 confidently, mark "can\'t tell" rather than guessing.</div>';
+
+  return h;
+}
+
+function blockCPageHTML() {
+  var h = '';
+  h += '<h1 class="title">claude-geiger v2.2 -- listener response sheet</h1>';
+  h += '<h2 class="clipname">Block C -- pacing flip-point probe (3 clips, same session)</h2>';
+  h += '<div class="meta-row">' +
+       '<div class="field">Listener ID: <span class="lid-fill" data-lid></span></div>' +
+       '<div class="field">Date: ______________</div>' +
+       '<div class="field">Playback order used (X/Y/Z mapped to actual clip IDs, experimenter fills in): ______________</div>' +
+       '</div>';
+  h += '<div class="note">Three clips (labelled X, Y, Z to the listener, in randomized order per README.md) are the ' +
+       'SAME session with only the drop-pacing rule changed. Play all three, then answer once, comparing across them. ' +
+       'Do not reveal to the listener which is "new".</div>';
+
+  h += '<section><h3>Ranking</h3>';
+  ['Which felt the most frantic / hardest to follow during the busy part?',
+   'Which felt the calmest / most controllable during the busy part?',
+   'Which gave you the best sense of just how busy the session actually was?'
+  ].forEach(function(q, i) {
+    h += '<div class="probe"><div class="q">' + (i + 1) + '. ' + q + '</div>';
+    h += '<div class="inline-fields">' +
+         '<span class="opt"><input type="radio" name="blockc_q' + i + '" value="X">X</span>' +
+         '<span class="opt"><input type="radio" name="blockc_q' + i + '" value="Y">Y</span>' +
+         '<span class="opt"><input type="radio" name="blockc_q' + i + '" value="Z">Z</span>' +
+         '</div></div>';
+  });
+  h += '</section>';
+
+  h += '<section><h3>Pairwise preference (for the sign test in score.py)</h3>';
+  ['X vs Y -- which would you rather listen to all day?',
+   'Y vs Z -- which would you rather listen to all day?',
+   'X vs Z -- which would you rather listen to all day?'
+  ].forEach(function(q, i) {
+    h += '<div class="probe"><div class="q">' + q + '</div>';
+    h += '<div class="inline-fields">' +
+         '<span class="opt"><input type="radio" name="blockc_pair' + i + '" value="left">Left</span>' +
+         '<span class="opt"><input type="radio" name="blockc_pair' + i + '" value="right">Right</span>' +
+         '<span class="opt"><input type="radio" name="blockc_pair' + i + '" value="notie">No real difference</span>' +
+         '</div></div>';
+  });
+  h += '</section>';
+
+  h += '<section><h3>Free response</h3>';
+  h += '<div class="probe"><div class="q">In your own words, what changed between the three?</div>' +
+       '<div class="freetext-line"></div><div class="freetext-line"></div><div class="freetext-line"></div></div>';
+  h += '</section>';
+
+  return h;
+}
+
+// ---------------------------------------------------------------------
+function buildAllSheets() {
+  var container = document.getElementById('sheets');
+  var html = '';
+  BLOCK_A.forEach(function(c) {
+    html += '<div class="sheet">' + clipPageHTML(c[0], c[1]) + '</div>';
+  });
+  BLOCK_B.forEach(function(c) {
+    html += '<div class="sheet">' + clipPageHTML(c[0], c[1], true) + '</div>';
+  });
+  html += '<div class="sheet">' + blockCPageHTML() + '</div>';
+  container.innerHTML = html;
+}
+
+function applyListenerId() {
+  var v = document.getElementById('listenerIdInput').value || '____';
+  document.querySelectorAll('.lid-fill').forEach(function(el) { el.textContent = v; });
+}
+
+buildAllSheets();
+</script>
+
+</body>
+</html>

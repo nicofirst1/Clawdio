@@ -1,0 +1,39 @@
+{
+  "clip": "b01_calm_success",
+  "description": "Calm read/grep/edit investigation, no failures, resolves cleanly.",
+  "outcome": "success (Stop, no failures)",
+  "timeline": [
+    {
+      "t": 0.0,
+      "label": "session start"
+    },
+    {
+      "t": 2.0,
+      "label": "first prompt"
+    },
+    {
+      "t": 6.0,
+      "label": "Read #1"
+    },
+    {
+      "t": 17.0,
+      "label": "Grep #2"
+    },
+    {
+      "t": 28.0,
+      "label": "Read #3"
+    },
+    {
+      "t": 39.0,
+      "label": "Edit #4"
+    },
+    {
+      "t": 50.0,
+      "label": "Read #5"
+    },
+    {
+      "t": 63.0,
+      "label": "Stop (success cadence)"
+    }
+  ]
+}

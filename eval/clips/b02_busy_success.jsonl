@@ -1,0 +1,19 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "implement pagination"}}
+{"t": 4.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 4.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 10.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 11.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 17.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 17.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 23.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 24.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 30.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 30.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 36.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 37.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 43.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 43.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 49.5, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "pg.py", "command": "pytest"}}}
+{"t": 50.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 58.0, "event": {"hook_event_name": "Stop"}}

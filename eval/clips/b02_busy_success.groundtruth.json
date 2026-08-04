@@ -1,0 +1,51 @@
+{
+  "clip": "b02_busy_success",
+  "description": "Busy write/exec build phase (rain thickens, bloom notes more frequent), resolves cleanly.",
+  "outcome": "success (Stop, no failures)",
+  "timeline": [
+    {
+      "t": 0.0,
+      "label": "session start"
+    },
+    {
+      "t": 1.0,
+      "label": "first prompt"
+    },
+    {
+      "t": 4.0,
+      "label": "Write #1"
+    },
+    {
+      "t": 10.5,
+      "label": "Bash #2"
+    },
+    {
+      "t": 17.0,
+      "label": "Write #3"
+    },
+    {
+      "t": 23.5,
+      "label": "Edit #4"
+    },
+    {
+      "t": 30.0,
+      "label": "Bash #5"
+    },
+    {
+      "t": 36.5,
+      "label": "Write #6"
+    },
+    {
+      "t": 43.0,
+      "label": "Edit #7"
+    },
+    {
+      "t": 49.5,
+      "label": "Bash #8"
+    },
+    {
+      "t": 58.0,
+      "label": "Stop (success cadence)"
+    }
+  ]
+}

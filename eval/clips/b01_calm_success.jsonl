@@ -1,0 +1,13 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 2.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "look into the auth flow"}}
+{"t": 6.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "x.py"}}}
+{"t": 6.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 17.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Grep", "tool_input": {"file_path": "x.py"}}}
+{"t": 17.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Grep"}}
+{"t": 28.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "x.py"}}}
+{"t": 28.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 39.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "x.py"}}}
+{"t": 39.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 50.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "x.py"}}}
+{"t": 50.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 64.0, "event": {"hook_event_name": "Stop"}}

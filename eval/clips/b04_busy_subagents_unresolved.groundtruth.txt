@@ -1,0 +1,19 @@
+b04_busy_subagents_unresolved -- ground truth
+Two subagents active, busy write/exec work, context pressure climbing. The clip cuts off with no resolution gesture -- tests whether listeners correctly report 'still going / unresolved' rather than inventing an ending.
+
+final outcome: UNRESOLVED (no Stop; ends mid-flight with subagents + pressure active)
+
+timeline:
+     0.0s  session start
+     1.0s  first prompt
+     4.0s  SubagentStart #1
+     7.0s  SubagentStart #2 (choir thickens)
+    11.0s  Write
+    18.0s  Bash
+    25.0s  Edit
+    32.0s  Write
+    39.0s  Bash
+    46.0s  context pressure fill=0.6
+    52.0s  context pressure fill=0.75
+    58.0s  context pressure fill=0.88
+    64.0s  CLIP ENDS -- unresolved, subagents still active

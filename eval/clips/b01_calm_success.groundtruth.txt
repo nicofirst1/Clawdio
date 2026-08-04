@@ -1,0 +1,14 @@
+b01_calm_success -- ground truth
+Calm read/grep/edit investigation, no failures, resolves cleanly.
+
+final outcome: success (Stop, no failures)
+
+timeline:
+     0.0s  session start
+     2.0s  first prompt
+     6.0s  Read #1
+    17.0s  Grep #2
+    28.0s  Read #3
+    39.0s  Edit #4
+    50.0s  Read #5
+    63.0s  Stop (success cadence)

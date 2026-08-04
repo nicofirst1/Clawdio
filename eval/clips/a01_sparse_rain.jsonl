@@ -1,0 +1,11 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 3.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "a.py"}}}
+{"t": 3.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 5.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "a.py"}}}
+{"t": 5.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 7.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "a.py"}}}
+{"t": 7.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 9.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "a.py"}}}
+{"t": 9.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 11.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "a.py"}}}
+{"t": 11.8, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}

@@ -1,0 +1,61 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart", "session_id": "sim-session-0001"}}
+{"t": 6.0, "event": {"hook_event_name": "UserPromptSubmit", "session_id": "sim-session-0001", "prompt": "add rate limiting to the API and make sure tests pass"}}
+{"t": 7.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "class RateLimiter", "path": "src/"}}}
+{"t": 7.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "class RateLimiter", "path": "src/"}}}
+{"t": 9.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/api.py"}}}
+{"t": 9.9, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/api.py"}}}
+{"t": 12.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Glob", "tool_input": {"pattern": "src/**/*.py"}}}
+{"t": 12.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Glob", "tool_input": {"pattern": "src/**/*.py"}}}
+{"t": 14.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/middleware.py"}}}
+{"t": 14.9, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/middleware.py"}}}
+{"t": 17.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "def handle_request", "path": "src/"}}}
+{"t": 17.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "def handle_request", "path": "src/"}}}
+{"t": 19.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "docs/api.md"}}}
+{"t": 19.9, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "docs/api.md"}}}
+{"t": 23.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/middleware.py", "old_string": "pass", "new_string": "self.limiter = RateLimiter()"}}}
+{"t": 23.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/middleware.py", "old_string": "pass", "new_string": "self.limiter = RateLimiter()"}}}
+{"t": 24.4, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/config.py"}}}
+{"t": 24.7, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/config.py"}}}
+{"t": 25.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/rate_limiter.py", "content": "class RateLimiter: ..."}}}
+{"t": 26.1, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/rate_limiter.py", "content": "class RateLimiter: ..."}}}
+{"t": 27.2, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "RateLimiter", "path": "tests/"}}}
+{"t": 27.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "RateLimiter", "path": "tests/"}}}
+{"t": 28.6, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/api.py", "old_string": "def handle", "new_string": "@rate_limited\ndef handle"}}}
+{"t": 28.9, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/api.py", "old_string": "def handle", "new_string": "@rate_limited\ndef handle"}}}
+{"t": 30.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff check src/"}}}
+{"t": 30.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff check src/"}}}
+{"t": 31.4, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/rate_limiter.py"}}}
+{"t": 31.7, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/rate_limiter.py"}}}
+{"t": 32.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/rate_limiter.py", "old_string": "window=60", "new_string": "window=30"}}}
+{"t": 33.1, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/rate_limiter.py", "old_string": "window=60", "new_string": "window=30"}}}
+{"t": 39.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_rate_limiter.py -q"}}}
+{"t": 40.8, "event": {"hook_event_name": "PostToolUseFailure", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_rate_limiter.py -q"}, "error": "non-zero exit status"}}
+{"t": 41.1, "event": {"hook_event_name": "Notification", "session_id": "sim-session-0001", "message": "Test run failed, review output"}}
+{"t": 44.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_rate_limiter.py"}}}
+{"t": 44.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_rate_limiter.py"}}}
+{"t": 45.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/rate_limiter.py", "old_string": "capacity=10", "new_string": "capacity=100"}}}
+{"t": 45.85, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/rate_limiter.py", "old_string": "capacity=10", "new_string": "capacity=100"}}}
+{"t": 47.5, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_rate_limiter.py -q"}}}
+{"t": 49.0, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_rate_limiter.py -q"}}}
+{"t": 50.5, "event": {"hook_event_name": "SubagentStart", "session_id": "sim-session-0001", "agent_type": "Explore", "agent_id": "sub-demo-1"}}
+{"t": 50.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "TODO", "path": "src/"}}}
+{"t": 51.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "TODO", "path": "src/"}}}
+{"t": 51.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 52.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 52.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "grep -r deprecated src/"}}}
+{"t": 53.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "grep -r deprecated src/"}}}
+{"t": 53.8, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/utils.py"}}}
+{"t": 54.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/utils.py"}}}
+{"t": 55.2, "event": {"hook_event_name": "SubagentStop", "session_id": "sim-session-0001", "agent_type": "Explore", "agent_id": "sub-demo-1"}}
+{"t": 56.3, "event": {"hook_event_name": "PermissionRequest", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "git commit -am 'add rate limiting'"}}}
+{"t": 57.3, "event": {"hook_event_name": "PreCompact", "session_id": "sim-session-0001", "trigger": "auto"}}
+{"t": 57.8, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.25}}
+{"t": 58.729, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.35}}
+{"t": 59.657, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.45}}
+{"t": 60.586, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.55}}
+{"t": 61.514, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.65}}
+{"t": 62.443, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.75}}
+{"t": 63.371, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.85}}
+{"t": 64.3, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.95}}
+{"t": 71.0, "event": {"hook_event_name": "Stop", "session_id": "sim-session-0001"}}
+{"t": 71.2, "event": {"hook_event_name": "SessionEnd", "session_id": "sim-session-0001", "reason": "completed"}}

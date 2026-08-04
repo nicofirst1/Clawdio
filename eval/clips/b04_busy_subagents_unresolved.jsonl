@@ -1,0 +1,17 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "refactor the pipeline across services"}}
+{"t": 4.0, "event": {"hook_event_name": "SubagentStart"}}
+{"t": 7.0, "event": {"hook_event_name": "SubagentStart"}}
+{"t": 11.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "svc.py", "command": "pytest"}}}
+{"t": 11.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 18.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "svc.py", "command": "pytest"}}}
+{"t": 18.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 25.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "svc.py", "command": "pytest"}}}
+{"t": 25.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 32.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "svc.py", "command": "pytest"}}}
+{"t": 32.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 39.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"file_path": "svc.py", "command": "pytest"}}}
+{"t": 39.5, "event": {"hook_event_name": "PostToolUse", "tool_name": "Bash"}}
+{"t": 46.0, "event": {"hook_event_name": "ContextPressure", "fill": 0.6}}
+{"t": 52.0, "event": {"hook_event_name": "ContextPressure", "fill": 0.75}}
+{"t": 58.0, "event": {"hook_event_name": "ContextPressure", "fill": 0.88}}

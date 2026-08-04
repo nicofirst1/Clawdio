@@ -1,0 +1,113 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart", "session_id": "sim-session-0001"}}
+{"t": 10.0, "event": {"hook_event_name": "UserPromptSubmit", "session_id": "sim-session-0001", "prompt": "add pagination to the search API"}}
+{"t": 11.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "def search", "path": "src/"}}}
+{"t": 11.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "def search", "path": "src/"}}}
+{"t": 15.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/search.py"}}}
+{"t": 15.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/search.py"}}}
+{"t": 19.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Glob", "tool_input": {"pattern": "src/**/*.py"}}}
+{"t": 19.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Glob", "tool_input": {"pattern": "src/**/*.py"}}}
+{"t": 23.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/models.py"}}}
+{"t": 23.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/models.py"}}}
+{"t": 27.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "class Paginator", "path": "src/"}}}
+{"t": 27.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "class Paginator", "path": "src/"}}}
+{"t": 31.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "docs/api.md"}}}
+{"t": 31.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "docs/api.md"}}}
+{"t": 35.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "WebSearch", "tool_input": {"query": "cursor pagination best practices"}}}
+{"t": 35.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "WebSearch", "tool_input": {"query": "cursor pagination best practices"}}}
+{"t": 39.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 39.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 43.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/pagination.py", "content": "class Paginator: ..."}}}
+{"t": 43.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/pagination.py", "content": "class Paginator: ..."}}}
+{"t": 45.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/pagination.py"}}}
+{"t": 45.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/pagination.py"}}}
+{"t": 47.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/search.py", "old_string": "def search(q)", "new_string": "def search(q, cursor=None)"}}}
+{"t": 47.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/search.py", "old_string": "def search(q)", "new_string": "def search(q, cursor=None)"}}}
+{"t": 49.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff check src/"}}}
+{"t": 49.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff check src/"}}}
+{"t": 51.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/models.py", "old_string": "class Result", "new_string": "class Result(Paginated)"}}}
+{"t": 51.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/models.py", "old_string": "class Result", "new_string": "class Result(Paginated)"}}}
+{"t": 53.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "tests/test_pagination.py", "content": "# pagination tests"}}}
+{"t": 53.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "tests/test_pagination.py", "content": "# pagination tests"}}}
+{"t": 55.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "Paginator", "path": "tests/"}}}
+{"t": 55.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "Paginator", "path": "tests/"}}}
+{"t": 57.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "page_size=20", "new_string": "page_size=50"}}}
+{"t": 57.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "page_size=20", "new_string": "page_size=50"}}}
+{"t": 59.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "python3 -m pyflakes src/"}}}
+{"t": 59.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "python3 -m pyflakes src/"}}}
+{"t": 61.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/db.py", "old_string": "LIMIT 20", "new_string": "LIMIT ?"}}}
+{"t": 61.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/db.py", "old_string": "LIMIT 20", "new_string": "LIMIT ?"}}}
+{"t": 63.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/pagination.py", "content": "class Paginator: ...  # v2"}}}
+{"t": 63.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/pagination.py", "content": "class Paginator: ...  # v2"}}}
+{"t": 65.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 65.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/db.py"}}}
+{"t": 67.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/search.py", "old_string": "return rows", "new_string": "return page(rows)"}}}
+{"t": 67.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/search.py", "old_string": "return rows", "new_string": "return page(rows)"}}}
+{"t": 69.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "docs/api.md", "content": "## Pagination"}}}
+{"t": 69.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "docs/api.md", "content": "## Pagination"}}}
+{"t": 71.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff format src/"}}}
+{"t": 71.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "ruff format src/"}}}
+{"t": 73.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "tests/test_pagination.py", "old_string": "assert 1", "new_string": "assert page.next"}}}
+{"t": 73.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "tests/test_pagination.py", "old_string": "assert 1", "new_string": "assert page.next"}}}
+{"t": 75.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/db.py", "content": "# cursor helpers"}}}
+{"t": 75.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Write", "tool_input": {"file_path": "src/db.py", "content": "# cursor helpers"}}}
+{"t": 77.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "None", "new_string": "cursor"}}}
+{"t": 77.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "None", "new_string": "cursor"}}}
+{"t": 79.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/models.py"}}}
+{"t": 79.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/models.py"}}}
+{"t": 81.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/models.py", "old_string": "id", "new_string": "id, cursor"}}}
+{"t": 81.3, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/models.py", "old_string": "id", "new_string": "id, cursor"}}}
+{"t": 85.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_pagination.py -q"}}}
+{"t": 86.3, "event": {"hook_event_name": "PostToolUseFailure", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_pagination.py -q"}, "error": "non-zero exit status"}}
+{"t": 90.0, "event": {"hook_event_name": "Notification", "session_id": "sim-session-0001", "message": "Test run failed, review output"}}
+{"t": 90.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_pagination.py"}}}
+{"t": 90.4, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_pagination.py"}}}
+{"t": 92.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "cursor=0", "new_string": "cursor=None"}}}
+{"t": 92.35, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "cursor=0", "new_string": "cursor=None"}}}
+{"t": 94.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_pagination.py -q"}}}
+{"t": 95.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest tests/test_pagination.py -q"}}}
+{"t": 105.0, "event": {"hook_event_name": "SubagentStart", "session_id": "sim-session-0001", "agent_type": "Explore", "agent_id": "sub-v2-1"}}
+{"t": 106.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "TODO", "path": "src/"}}}
+{"t": 106.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "TODO", "path": "src/"}}}
+{"t": 107.0, "event": {"hook_event_name": "SubagentStart", "session_id": "sim-session-0001", "agent_type": "Review", "agent_id": "sub-v2-2"}}
+{"t": 108.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.3}}
+{"t": 109.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/utils.py"}}}
+{"t": 109.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/utils.py"}}}
+{"t": 111.222, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.374}}
+{"t": 112.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "grep -r deprecated src/"}}}
+{"t": 112.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "grep -r deprecated src/"}}}
+{"t": 114.444, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.449}}
+{"t": 115.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/config.py"}}}
+{"t": 115.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/config.py"}}}
+{"t": 117.667, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.523}}
+{"t": 118.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "# TODO docstring", "new_string": "\"\"\"Cursor-based pagination.\"\"\""}}}
+{"t": 118.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/pagination.py", "old_string": "# TODO docstring", "new_string": "\"\"\"Cursor-based pagination.\"\"\""}}}
+{"t": 120.889, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.598}}
+{"t": 121.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_pagination.py"}}}
+{"t": 121.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "tests/test_pagination.py"}}}
+{"t": 124.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "cursor", "path": "tests/"}}}
+{"t": 124.111, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.672}}
+{"t": 124.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Grep", "tool_input": {"pattern": "cursor", "path": "tests/"}}}
+{"t": 127.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/utils.py", "old_string": "def enc", "new_string": "def encode_cursor"}}}
+{"t": 127.333, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.747}}
+{"t": 127.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Edit", "tool_input": {"file_path": "src/utils.py", "old_string": "def enc", "new_string": "def encode_cursor"}}}
+{"t": 130.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/search.py"}}}
+{"t": 130.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Read", "tool_input": {"file_path": "src/search.py"}}}
+{"t": 130.556, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.821}}
+{"t": 133.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}}}
+{"t": 133.5, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "pytest -q"}}}
+{"t": 133.778, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.896}}
+{"t": 136.0, "event": {"hook_event_name": "SubagentStop", "session_id": "sim-session-0001", "agent_type": "Review", "agent_id": "sub-v2-2"}}
+{"t": 137.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.97}}
+{"t": 139.0, "event": {"hook_event_name": "SubagentStop", "session_id": "sim-session-0001", "agent_type": "Explore", "agent_id": "sub-v2-1"}}
+{"t": 145.0, "event": {"hook_event_name": "PreCompact", "session_id": "sim-session-0001", "trigger": "auto"}}
+{"t": 146.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.97}}
+{"t": 147.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.765}}
+{"t": 148.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.56}}
+{"t": 149.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.355}}
+{"t": 150.0, "event": {"hook_event_name": "ContextPressure", "session_id": "sim-session-0001", "fill": 0.15}}
+{"t": 154.0, "event": {"hook_event_name": "PermissionRequest", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "git commit -am 'add pagination'"}}}
+{"t": 158.0, "event": {"hook_event_name": "PreToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "git commit -am 'add pagination'"}}}
+{"t": 158.6, "event": {"hook_event_name": "PostToolUse", "session_id": "sim-session-0001", "tool_name": "Bash", "tool_input": {"command": "git commit -am 'add pagination'"}}}
+{"t": 163.0, "event": {"hook_event_name": "UserPromptSubmit", "session_id": "sim-session-0001", "prompt": "looks good, thanks"}}
+{"t": 166.5, "event": {"hook_event_name": "Stop", "session_id": "sim-session-0001"}}
+{"t": 174.0, "event": {"hook_event_name": "SessionEnd", "session_id": "sim-session-0001", "reason": "completed"}}

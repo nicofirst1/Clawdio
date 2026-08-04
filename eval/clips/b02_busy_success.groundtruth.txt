@@ -1,0 +1,17 @@
+b02_busy_success -- ground truth
+Busy write/exec build phase (rain thickens, bloom notes more frequent), resolves cleanly.
+
+final outcome: success (Stop, no failures)
+
+timeline:
+     0.0s  session start
+     1.0s  first prompt
+     4.0s  Write #1
+    10.5s  Bash #2
+    17.0s  Write #3
+    23.5s  Edit #4
+    30.0s  Bash #5
+    36.5s  Write #6
+    43.0s  Edit #7
+    49.5s  Bash #8
+    58.0s  Stop (success cadence)

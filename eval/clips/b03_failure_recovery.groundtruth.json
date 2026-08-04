@@ -1,0 +1,47 @@
+{
+  "clip": "b03_failure_recovery",
+  "description": "A Bash failure (knock, bed darkens/shades toward vi) followed by investigation and a successful retry (filter lifts back over ~5s), then Stop.",
+  "outcome": "success after one failure+recovery",
+  "timeline": [
+    {
+      "t": 0.0,
+      "label": "session start"
+    },
+    {
+      "t": 1.0,
+      "label": "first prompt"
+    },
+    {
+      "t": 5.0,
+      "label": "Bash (running tests)"
+    },
+    {
+      "t": 6.5,
+      "label": "FAILURE (knock, room darkens)"
+    },
+    {
+      "t": 13.0,
+      "label": "Read (investigating)"
+    },
+    {
+      "t": 24.0,
+      "label": "Edit (investigating)"
+    },
+    {
+      "t": 35.0,
+      "label": "Read (investigating)"
+    },
+    {
+      "t": 46.0,
+      "label": "Bash retry"
+    },
+    {
+      "t": 47.5,
+      "label": "RETRY SUCCEEDS (light returns)"
+    },
+    {
+      "t": 57.0,
+      "label": "Stop (success cadence)"
+    }
+  ]
+}
