@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind listening test — round 3</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  .clip { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  .clip h2 { margin: 0 0 .5rem; }
+  audio { width: 100%; }
+  .scale { display: flex; gap: .4rem; align-items: center; margin: .5rem 0; flex-wrap: wrap; }
+  .scale span.lbl { min-width: 12rem; font-size: .9rem; color: #555; }
+  .scale label { cursor: pointer; }
+  fieldset { border: none; padding: 0; margin: 1rem 0; }
+  #result { white-space: pre-wrap; background: #f6f6f6; border-radius: 8px; padding: 1rem; display: none; font-family: monospace; }
+  button { font-size: 1rem; padding: .5rem 1.2rem; border-radius: 6px; border: 1px solid #888; background: #fff; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>Blind listening test — round 3</h1>
+<p>Four candidate "drop tick" sounds. Listen with the volume you'd actually use while working. Rate each, then rank them. Don't overthink it — first impressions count.</p>
+
+<div class="clip" data-id="P">
+  <h2>Clip P</h2>
+  <audio controls preload="none" src="P.mp3"></audio>
+  <div class="scale"><span class="lbl">Pleasant?</span> 1 (unpleasant) <span class="opts" data-q="pleasant"></span> 7 (lovely)</div>
+  <div class="scale"><span class="lbl">Could I ignore this for hours?</span> 1 (no way) <span class="opts" data-q="ignorable"></span> 7 (easily)</div>
+</div>
+<div class="clip" data-id="Q">
+  <h2>Clip Q</h2>
+  <audio controls preload="none" src="Q.mp3"></audio>
+  <div class="scale"><span class="lbl">Pleasant?</span> 1 (unpleasant) <span class="opts" data-q="pleasant"></span> 7 (lovely)</div>
+  <div class="scale"><span class="lbl">Could I ignore this for hours?</span> 1 (no way) <span class="opts" data-q="ignorable"></span> 7 (easily)</div>
+</div>
+<div class="clip" data-id="R">
+  <h2>Clip R</h2>
+  <audio controls preload="none" src="R.mp3"></audio>
+  <div class="scale"><span class="lbl">Pleasant?</span> 1 (unpleasant) <span class="opts" data-q="pleasant"></span> 7 (lovely)</div>
+  <div class="scale"><span class="lbl">Could I ignore this for hours?</span> 1 (no way) <span class="opts" data-q="ignorable"></span> 7 (easily)</div>
+</div>
+<div class="clip" data-id="S">
+  <h2>Clip S</h2>
+  <audio controls preload="none" src="S.mp3"></audio>
+  <div class="scale"><span class="lbl">Pleasant?</span> 1 (unpleasant) <span class="opts" data-q="pleasant"></span> 7 (lovely)</div>
+  <div class="scale"><span class="lbl">Could I ignore this for hours?</span> 1 (no way) <span class="opts" data-q="ignorable"></span> 7 (easily)</div>
+</div>
+
+<fieldset>
+  <p><strong>Rank them</strong> (best first, e.g. "Q P S R"):
+    <input id="rank" size="10" placeholder="e.g. Q P S R"></p>
+  <p><strong>Any comments?</strong> (one sentence)<br>
+    <input id="comment" size="60" style="width:100%"></p>
+</fieldset>
+
+<button onclick="report()">Show my answers</button>
+<p id="result"></p>
+
+<script>
+// build radio groups
+document.querySelectorAll('.clip').forEach(clip => {
+  const id = clip.dataset.id;
+  clip.querySelectorAll('.opts').forEach(span => {
+    const q = span.dataset.q;
+    for (let v = 1; v <= 7; v++) {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="${id}-${q}" value="${v}">${v}`;
+      span.appendChild(l);
+    }
+  });
+});
+function val(name) {
+  const r = document.querySelector(`input[name="${name}"]:checked`);
+  return r ? r.value : '-';
+}
+function report() {
+  let out = 'BLIND TEST RESULTS\n';
+  for (const id of ['P','Q','R','S'])
+    out += `${id}: pleasant=${val(id+'-pleasant')} ignorable=${val(id+'-ignorable')}\n`;
+  out += `rank (best first): ${document.getElementById('rank').value || '-'}\n`;
+  out += `comment: ${document.getElementById('comment').value || '-'}`;
+  const p = document.getElementById('result');
+  p.textContent = out;
+  p.style.display = 'block';
+}
+</script>
+</body>
+</html>

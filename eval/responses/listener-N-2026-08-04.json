@@ -1,0 +1,406 @@
+{
+  "_meta": {
+    "listener": "N",
+    "date": "2026-08-04",
+    "source_pdf": "claude-geiger v2.2 -- listener scoring sheets.pdf (25 pages)",
+    "block_c_assumption": "The 'Playback order used' line on the Block C sheet was left BLANK by the listener/experimenter. Per task instruction, we ASSUME the listener heard the round-2 blind files, i.e. the mapping in eval/blind/answer-key.txt: X=c1_v2_mapping, Y=c3_v22_half_density, Z=c2_v22_mapping. This assumption is NOT independently verified from the PDF and should be re-confirmed against the actual playback log before treating Block C results as conclusive.",
+    "unmarked_items": [
+      "a07_done_cadence: ISO 'Calm' row unmarked (confirmed blank on sheet, page 13)",
+      "b04_busy_subagents_unresolved: comprehension Q1 (activity contour) unmarked -- all four cards blank (confirmed blank on sheet, page 23)",
+      "a04_knock, b03_failure_recovery, b04_busy_subagents_unresolved, a08_needs_you_chime: 'wrong_time_s' fill-in line left blank even though 'Yes' was marked for Q2 -- recorded as wrong=yes with wrong_time_s=null for all four"
+    ]
+  },
+  "listener": "N",
+  "clips": {
+    "a01_sparse_rain": {
+      "contour": "rising",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 5,
+        "control_overwhelm": 5,
+        "pleasant_annoying": 4,
+        "natural_mechanical": 3,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 3,
+        "predictable_erratic": 3,
+        "hours_minutes": 5
+      },
+      "iso": {
+        "pleasant": 3,
+        "vibrant": 4,
+        "eventful": 2,
+        "chaotic": 2,
+        "annoying": 4,
+        "monotonous": 4,
+        "uneventful": 5,
+        "calm": 3
+      },
+      "icben": 6,
+      "control": {
+        "predict": 2,
+        "outofcontrol": 1
+      }
+    },
+    "a02_dense_rain": {
+      "contour": "rising",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 5,
+        "control_overwhelm": 4,
+        "pleasant_annoying": 3,
+        "natural_mechanical": 5,
+        "informative_meaningless": 3,
+        "relaxing_stressful": 3,
+        "predictable_erratic": 1,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 2,
+        "vibrant": 2,
+        "eventful": 4,
+        "chaotic": 5,
+        "annoying": 4,
+        "monotonous": 2,
+        "uneventful": 2,
+        "calm": 2
+      },
+      "icben": 5,
+      "control": {
+        "predict": 5,
+        "outofcontrol": 3
+      }
+    },
+    "a03_write_notes": {
+      "contour": "rising",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "one",
+      "sd": {
+        "calm_frantic": 5,
+        "control_overwhelm": 6,
+        "pleasant_annoying": 5,
+        "natural_mechanical": 3,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 6,
+        "predictable_erratic": 6,
+        "hours_minutes": 5
+      },
+      "iso": {
+        "pleasant": 1,
+        "vibrant": 2,
+        "eventful": 1,
+        "chaotic": 5,
+        "annoying": 4,
+        "monotonous": 4,
+        "uneventful": 3,
+        "calm": 2
+      },
+      "icben": 6,
+      "control": {
+        "predict": 1,
+        "outofcontrol": 4
+      }
+    },
+    "a04_knock": {
+      "contour": "spike",
+      "wrong": "yes",
+      "wrong_time_s": null,
+      "outcome": "failed",
+      "onevsseveral": "one",
+      "sd": {
+        "calm_frantic": 2,
+        "control_overwhelm": 2,
+        "pleasant_annoying": 4,
+        "natural_mechanical": 5,
+        "informative_meaningless": 1,
+        "relaxing_stressful": 5,
+        "predictable_erratic": 4,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 2,
+        "vibrant": 1,
+        "eventful": 5,
+        "chaotic": 2,
+        "annoying": 2,
+        "monotonous": 1,
+        "uneventful": 1,
+        "calm": 2
+      },
+      "icben": 7,
+      "control": {
+        "predict": 4,
+        "outofcontrol": 4
+      }
+    },
+    "a05_subagent_choir": {
+      "contour": "rising",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "one",
+      "sd": {
+        "calm_frantic": 3,
+        "control_overwhelm": 4,
+        "pleasant_annoying": 4,
+        "natural_mechanical": 2,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 3,
+        "predictable_erratic": 3,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 2,
+        "vibrant": 1,
+        "eventful": 2,
+        "chaotic": 3,
+        "annoying": 3,
+        "monotonous": 4,
+        "uneventful": 4,
+        "calm": 4
+      },
+      "icben": 7,
+      "control": {
+        "predict": 1,
+        "outofcontrol": 1
+      }
+    },
+    "a06_pressure_weather": {
+      "contour": "spike",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "succeeded",
+      "onevsseveral": "one",
+      "sd": {
+        "calm_frantic": 2,
+        "control_overwhelm": 2,
+        "pleasant_annoying": 2,
+        "natural_mechanical": 2,
+        "informative_meaningless": 2,
+        "relaxing_stressful": 4,
+        "predictable_erratic": 4,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 4,
+        "vibrant": 3,
+        "eventful": 4,
+        "chaotic": 2,
+        "annoying": 2,
+        "monotonous": 4,
+        "uneventful": 3,
+        "calm": 3
+      },
+      "icben": 8,
+      "control": {
+        "predict": 3,
+        "outofcontrol": 2
+      }
+    },
+    "a07_done_cadence": {
+      "contour": "rising",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 4,
+        "control_overwhelm": 4,
+        "pleasant_annoying": 5,
+        "natural_mechanical": 3,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 3,
+        "predictable_erratic": 5,
+        "hours_minutes": 4
+      },
+      "iso_NOTE": "iso block omitted entirely for this clip -- the 'Calm' row is genuinely unmarked on the sheet (confirmed, see _meta.unmarked_items) and score.py's iso_pleasant_eventful() indexes iso['calm'] directly with no missing-key handling, so a partial iso dict crashes it. Omitting the block makes it return (None, None) cleanly for a07 rather than guessing a Calm value.",
+      "icben": 7,
+      "control": {
+        "predict": 1,
+        "outofcontrol": 1
+      }
+    },
+    "a08_needs_you_chime": {
+      "contour": "dip_recover",
+      "wrong": "yes",
+      "wrong_time_s": null,
+      "outcome": "failed",
+      "onevsseveral": "one",
+      "sd": {
+        "calm_frantic": 3,
+        "control_overwhelm": 3,
+        "pleasant_annoying": 5,
+        "natural_mechanical": 6,
+        "informative_meaningless": 2,
+        "relaxing_stressful": 4,
+        "predictable_erratic": 4,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 4,
+        "vibrant": 4,
+        "eventful": 5,
+        "chaotic": 2,
+        "annoying": 3,
+        "monotonous": 4,
+        "uneventful": 1,
+        "calm": 3
+      },
+      "icben": 6,
+      "control": {
+        "predict": 4,
+        "outofcontrol": 2
+      }
+    },
+    "b01_calm_success": {
+      "contour": "flat",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 2,
+        "control_overwhelm": 3,
+        "pleasant_annoying": 2,
+        "natural_mechanical": 3,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 2,
+        "predictable_erratic": 2,
+        "hours_minutes": 2
+      },
+      "iso": {
+        "pleasant": 5,
+        "vibrant": 4,
+        "eventful": 2,
+        "chaotic": 1,
+        "annoying": 2,
+        "monotonous": 4,
+        "uneventful": 5,
+        "calm": 4
+      },
+      "icben": 9,
+      "control": {
+        "predict": 1,
+        "outofcontrol": 1
+      }
+    },
+    "b02_busy_success": {
+      "contour": "flat",
+      "wrong": "no",
+      "wrong_time_s": null,
+      "outcome": "unresolved",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 5,
+        "control_overwhelm": 6,
+        "pleasant_annoying": 6,
+        "natural_mechanical": 1,
+        "informative_meaningless": 3,
+        "relaxing_stressful": 6,
+        "predictable_erratic": 5,
+        "hours_minutes": 6
+      },
+      "iso": {
+        "pleasant": 2,
+        "vibrant": 3,
+        "eventful": 4,
+        "chaotic": 5,
+        "annoying": 4,
+        "monotonous": 2,
+        "uneventful": 1,
+        "calm": 1
+      },
+      "icben": 2,
+      "control": {
+        "predict": 1,
+        "outofcontrol": 3
+      }
+    },
+    "b03_failure_recovery": {
+      "contour": "dip_recover",
+      "wrong": "yes",
+      "wrong_time_s": null,
+      "outcome": "failed",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 3,
+        "control_overwhelm": 5,
+        "pleasant_annoying": 4,
+        "natural_mechanical": 1,
+        "informative_meaningless": 3,
+        "relaxing_stressful": 5,
+        "predictable_erratic": 2,
+        "hours_minutes": 3
+      },
+      "iso": {
+        "pleasant": 4,
+        "vibrant": 5,
+        "eventful": 4,
+        "chaotic": 4,
+        "annoying": 3,
+        "monotonous": 2,
+        "uneventful": 2,
+        "calm": 2
+      },
+      "icben": 6,
+      "control": {
+        "predict": 4,
+        "outofcontrol": 2
+      }
+    },
+    "b04_busy_subagents_unresolved": {
+      "contour": null,
+      "wrong": "yes",
+      "wrong_time_s": null,
+      "outcome": "failed",
+      "onevsseveral": "several",
+      "sd": {
+        "calm_frantic": 5,
+        "control_overwhelm": 6,
+        "pleasant_annoying": 5,
+        "natural_mechanical": 1,
+        "informative_meaningless": 6,
+        "relaxing_stressful": 6,
+        "predictable_erratic": 4,
+        "hours_minutes": 6
+      },
+      "iso": {
+        "pleasant": 2,
+        "vibrant": 1,
+        "eventful": 5,
+        "chaotic": 4,
+        "annoying": 4,
+        "monotonous": 3,
+        "uneventful": 2,
+        "calm": 2
+      },
+      "icben": 5,
+      "control": {
+        "predict": 2,
+        "outofcontrol": 4
+      }
+    }
+  },
+  "block_c": {
+    "letter_to_clip": {
+      "X": "c1_v2_mapping",
+      "Y": "c3_v22_half_density",
+      "Z": "c2_v22_mapping"
+    },
+    "most_frantic": "X",
+    "most_calm": "Z",
+    "most_informative": "Y",
+    "pairs": {
+      "XY": "right",
+      "YZ": "right",
+      "XZ": "right"
+    }
+  }
+}

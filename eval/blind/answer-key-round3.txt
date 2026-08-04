@@ -1,0 +1,4 @@
+P = marimba
+Q = woodblock
+R = plink
+S = noise_tick_control

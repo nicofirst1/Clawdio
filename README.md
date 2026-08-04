@@ -11,7 +11,7 @@ As of v2 the sound layer is a swappable **theme**:
 
 - **`ambient`** (default): a generative pad + rain + melodic-bloom
   soundscape designed to be pleasant for hours of background listening (see
-  `BRIEF-v2.md` and "How it sounds" below).
+  `research/BRIEF-v2.md` and "How it sounds" below).
 - **`geiger`** (legacy v1, `SONIFIER_THEME=geiger`): the original Geiger-
   counter click train + chimes + optional drone.
 
@@ -61,8 +61,8 @@ the two themes; only the sound layer changes.
 
 ### `ambient` theme (default, v2.2 "Warm Room")
 
-Five audible layers sharing one Freeverb "room" (see `BRIEF-v2.md` for the
-full synthesis spec and `BRIEF-v2.2.md` for the amendment below): a
+Five audible layers sharing one Freeverb "room" (see `research/BRIEF-v2.md` for the
+full synthesis spec and `research/BRIEF-v2.2.md` for the amendment below): a
 supersaw+shimmer bed pad (plus a v2.2 mid-register C3+G3 warmth layer) plus
 a continuous shaped-noise "air" bed, both always on while the session is
 alive, a rain-grain stream that's the direct replacement for v1's clicks
@@ -76,7 +76,7 @@ consonant by construction.
 
 **v2.2 amendment ("Warm Room")** — the first blind-listener pass on v2
 came back "dark cave / isolated / confusing / anxiety-inducing" (earphones,
-n=1; see `BRIEF-v2.2.md` section 0 for the verbatim quotes). v2.2 fixes the
+n=1; see `research/BRIEF-v2.2.md` section 0 for the verbatim quotes). v2.2 fixes the
 six root causes it identified, without touching the legacy `geiger` theme
 or the layer architecture above:
 
@@ -159,7 +159,7 @@ or the layer architecture above:
 | `SONIFIER_MUTE` | off | mute all audio output (daemon still runs, still answers `/health`) |
 | `SONIFIER_CLICKS` | on | `geiger`: enable/disable the click train. `ambient`: enable/disable the L2 rain layer (per-event drops + activity-driven Poisson bed) |
 | `SONIFIER_CHIMES` | on | `geiger`: enable/disable one-shot chimes. `ambient`: enable/disable discrete gestures (knock, cadence, notification chime, ack note, settling gesture) |
-| `SONIFIER_DRONE` | off | `geiger`: enable/disable the context-pressure drone. `ambient`: **unused** — the L5 context-pressure "weather" layer is event-driven (`ContextPressure`) and on by default in ambient, per BRIEF-v2.md section 8 |
+| `SONIFIER_DRONE` | off | `geiger`: enable/disable the context-pressure drone. `ambient`: **unused** — the L5 context-pressure "weather" layer is event-driven (`ContextPressure`) and on by default in ambient, per research/BRIEF-v2.md section 8 |
 | `SONIFIER_IDLE_EXIT_MIN` | `30` | minutes of inactivity before the daemon exits on its own |
 | `SONIFIER_QUIET` | off | suppress the daemon's per-event stderr logging |
 | `SONIFIER_LOG_DIR` | `$TMPDIR` or `/tmp` | where `hooks/autostart-daemon.sh` writes `sonifier.log` |
@@ -256,7 +256,7 @@ of them from the scripts below, or use `eval/make_clips.py`, which covers the
 same ground with fixed seeds.
 
 - `demo-session-v2.jsonl` — a 180s ambient showcase (default `ambient` theme)
-  exercising every layer and gesture in `BRIEF-v2.md` section 8: idle
+  exercising every layer and gesture in `research/BRIEF-v2.md` section 8: idle
   self-playing bloom, a gentle read phase, an active build phase (rain
   thickens, notes bloom), a failure (knock + room pause, room darkens) and
   recovery, a two-subagent phase with a rising context-pressure ramp, a
@@ -302,7 +302,7 @@ python3 -m pytest tests/ -q          # 97 tests (geiger DSP + ambient theme, inc
 ```
 
 `tools/analyze_render.py` is the reusable acceptance battery: it runs every
-numeric criterion in `BRIEF-v2.md`/`BRIEF-v2.2.md` section 7 against a
+numeric criterion in `research/BRIEF-v2.md`/`research/BRIEF-v2.2.md` section 7 against a
 rendered WAV and prints a PASS/FAIL table, plus (with `--arc`) the per-10s
 RMS / centroid / rain-onset-density arc used to check that a render follows
 its storyboard. As of v2.2 it also runs the amended criteria (items marked
@@ -340,7 +340,7 @@ python3 tools/analyze_render.py demo-v22.wav --steady 50:80 \
   output — sessions with a lot of scripted activity swing, like
   `demo-session-v2.jsonl`, don't have one single window that's steady for
   their whole duration, only local plateaus). Windows containing scripted
-  gestures are reported separately, see `VERIFICATION.md`.
+  gestures are reported separately, see `research/VERIFICATION.md`.
 - `--events FILE` enables the information checks (item 9) and the v2.2 N1-N4
   checks, which need to know when the scripted failure/SessionEnd/activity
   changes happened.
@@ -351,7 +351,7 @@ tuning (`python3 tools/lab.py steady 60`).
 ## Evaluation kit (v2.2, `eval/`)
 
 A protocol + tooling for turning household/blind listeners into scored,
-unbiased data points on the ambient theme, per `BRIEF-v2.2.md` section 8:
+unbiased data points on the ambient theme, per `research/BRIEF-v2.2.md` section 8:
 
 ```
 python3 eval/make_clips.py            # generates eval/clips/ (WAV+MP3, fixed seeds)
