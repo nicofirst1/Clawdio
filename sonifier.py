@@ -1687,6 +1687,18 @@ AIR_WASH_BOOST_RANGE_DB = 2.5   # v2.2 section 1: extra air gain from the
                                 # sustained activity beyond the ~5/s cap point
                                 # thickens the wash instead of adding drops)
 AIR_WASH_BOOST_HZ = 300.0      # extra brightening applied under the same crossfade
+# v2.3 air-bed shrink (round-2 decision + lit-review rec #4: "hard-lowpass
+# and/or shrink the continuous air bed" -- Brain.fm/Eno/Endel corroboration
+# that a continuous broadband layer underperforms structured material for
+# sustained listening). Two independent levers, applied on top of the v2.2
+# tuning above rather than reworking it (that tuning already fights a real
+# tension between the section-7 centroid FLOOR (>=350Hz, needs high-frequency
+# content somewhere) and the drop-grain band (1.8-3.5kHz, must not be masked)
+# -- see the "VERIFIER re-tune" comment above; lowering AIR_TILT_HI further
+# risks re-breaking that floor, so the level cut is the primary lever):
+AIR_V23_LEVEL_CUT_DB = -4.0     # extra trim on top of AIR_CAL_DB, both idle and active
+AIR_V23_HARD_CEILING_HZ = 3200.0  # hard lowpass ceiling on the air's own upper
+                                   # tilt corner (was uncapped at 4000Hz active)
 
 _PINK_POLES = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
 
@@ -1789,6 +1801,9 @@ class AmbientConfig:
     AIR_ACTIVITY_RANGE_DB: float = AIR_ACTIVITY_RANGE_DB
     AIR_WASH_BOOST_RANGE_DB: float = AIR_WASH_BOOST_RANGE_DB
     AIR_WASH_BOOST_HZ: float = AIR_WASH_BOOST_HZ
+    # v2.3 air-bed shrink (round-2 decision + lit-review rec #4)
+    AIR_V23_LEVEL_CUT_DB: float = AIR_V23_LEVEL_CUT_DB
+    AIR_V23_HARD_CEILING_HZ: float = AIR_V23_HARD_CEILING_HZ
     PINK_POLES: tuple = _PINK_POLES
 
 
@@ -2372,8 +2387,12 @@ class RainLayer:
         # wash, not faster taps". Normalized so a moderate flood (excess~=0.5)
         # already reaches the full extra boost.
         wash_boost = min(1.0, self.wash_excess / 0.5)
-        # level: tracks the bed's own state envelope, opened up by activity
-        floor_db = bed_level_db_value + AIR_FLOOR_OFFSET_DB
+        # level: tracks the bed's own state envelope, opened up by activity.
+        # v2.3: AIR_V23_LEVEL_CUT_DB shrinks the whole envelope (round-2
+        # decision + lit-review rec #4 -- the continuous noise bed was the
+        # dominant contributor to the "white noise/chaos" blind-round-2
+        # complaint, corroborated by round-3's isolated control clip).
+        floor_db = bed_level_db_value + AIR_FLOOR_OFFSET_DB + AIR_V23_LEVEL_CUT_DB
         self.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
             AIR_WASH_BOOST_RANGE_DB * wash_boost)
         self.air_gain_db.step(dt)
@@ -2381,9 +2400,16 @@ class RainLayer:
         # most of this mix's 2-6 kHz energy lives. The master one-pole alone
         # could not deliver an audible darkening.
         gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, fail_penalty_slew_value / 2400.0)
-        self.air_cut_hz.target = (AIR_TILT_HI_IDLE_HZ + (
+        # v2.3: hard ceiling on top of the existing activity-adaptive tilt --
+        # "hard-lowpass ... the continuous air bed" per the round-2 decision.
+        # Applied as a min() rather than lowering AIR_TILT_HI_ACTIVE_HZ itself
+        # so the idle/low-activity register (which already sits under the
+        # ceiling) is untouched and the section 7 centroid floor (>=350Hz)
+        # tuning above isn't disturbed -- only the busiest, brightest end of
+        # the activity range is clipped.
+        self.air_cut_hz.target = min(AIR_V23_HARD_CEILING_HZ, (AIR_TILT_HI_IDLE_HZ + (
             AIR_TILT_HI_ACTIVE_HZ - AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
-            + AIR_WASH_BOOST_HZ * wash_boost) * gloom
+            + AIR_WASH_BOOST_HZ * wash_boost) * gloom)
         self.air_cut_hz.step(dt)
         if self.air_gain_db.value < -70.0:
             return np.zeros((n, 2))
