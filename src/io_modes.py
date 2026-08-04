@@ -143,14 +143,26 @@ _STATIC_FILES = {
 }
 
 # How each live config key maps onto theme-state attributes. Ambient renamed
-# clicks/chimes to rain/gestures at init, so try each candidate in order.
+# clicks/chimes to rain/gestures at init, and RainLayer keeps its own copy of
+# rain_enabled (read at render time), so every existing candidate gets set --
+# dotted paths reach into layers.
 _LIVE_ATTRS = {
     "volume": ("volume",),
     "mute": ("mute",),
-    "clicks": ("clicks_enabled", "rain_enabled"),
+    "clicks": ("clicks_enabled", "rain_enabled", "rain.rain_enabled"),
     "chimes": ("chimes_enabled", "gestures_enabled"),
     "drone": ("drone_enabled",),
 }
+
+
+def _set_attr_path(obj, path, value) -> None:
+    parts = path.split(".")
+    for p in parts[:-1]:
+        obj = getattr(obj, p, None)
+        if obj is None:
+            return
+    if hasattr(obj, parts[-1]):
+        setattr(obj, parts[-1], value)
 
 
 def _apply_live(state, cfg: dict) -> None:
@@ -158,8 +170,7 @@ def _apply_live(state, cfg: dict) -> None:
         if key not in cfg:
             continue
         for attr in attrs:
-            if hasattr(state, attr):
-                setattr(state, attr, cfg[key])
+            _set_attr_path(state, attr, cfg[key])
 
 
 class _EventHTTPHandler(BaseHTTPRequestHandler):

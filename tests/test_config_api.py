@@ -143,6 +143,18 @@ def test_static_ui_served(server):
     assert _get(port, "/style.css")[0] == 200
 
 
+def test_live_apply_reaches_ambient_rain_layer(cfg_file):
+    # Regression: RainLayer copies rain_enabled at construction and the render
+    # path reads the layer's copy, so live-apply must reach into the layer.
+    from ambient import AmbientTheme
+    state = AmbientTheme(clicks_enabled=True, chimes_enabled=True)
+    io_modes._apply_live(state, {"clicks": False, "chimes": False, "volume": 0.7})
+    assert state.rain_enabled is False
+    assert state.rain.rain_enabled is False
+    assert state.gestures_enabled is False
+    assert state.volume == 0.7
+
+
 def test_event_endpoint_still_works(server):
     _state, port, _ = server
     status, _data = _post(port, "/event", {"hook_event_name": "PreToolUse", "tool_name": "Read"})
