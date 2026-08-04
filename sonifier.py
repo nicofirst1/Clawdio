@@ -1581,6 +1581,103 @@ AIR_WASH_BOOST_HZ = 300.0      # extra brightening applied under the same crossf
 _PINK_POLES = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))
 
 
+@dataclass
+class AmbientConfig:
+    """Every AmbientTheme tuning constant, gathered into one object.
+
+    Fields mirror the module-level constants above 1:1 (same names, same
+    values, same comments) -- those constants remain the single source of
+    truth (several free functions outside AmbientTheme, e.g.
+    _air_norm_factor, and the test suite reference them directly by name),
+    this dataclass just gives AmbientTheme one object to own and pass
+    around instead of reaching out to ~60 module globals. One instance
+    (AMBIENT_CONFIG) is built at import time and handed to
+    AmbientTheme.__init__ as `cfg`; there is no env/file loading, only the
+    defaults below (which are literally the module constants).
+    """
+
+    # -- OU walk / bed shape --
+    BED_OU_TAU: float = BED_OU_TAU
+    BED_OU_EXCURSION_SCALE: float = BED_OU_EXCURSION_SCALE
+    BED_CUTOFF_OU_SIGMA_OCT: float = BED_CUTOFF_OU_SIGMA_OCT
+    BED_GAIN_OU_SIGMA_DB: float = BED_GAIN_OU_SIGMA_DB
+    SHIMMER_OU_TAU: float = SHIMMER_OU_TAU
+    SHIMMER_OU_SIGMA: float = SHIMMER_OU_SIGMA
+    # v2.2 brightness lift (section 2): a soft C3+G3 mid layer, independent
+    # from the low bed/shimmer stack, to help pull the mix's spectral
+    # centroid up out of the "dark cave" register (v2 measured ~157 Hz)
+    # toward the 350-1200 Hz target band without adding harshness.
+    MIDLAYER_OU_TAU: float = MIDLAYER_OU_TAU
+    MIDLAYER_OU_SIGMA: float = MIDLAYER_OU_SIGMA
+    MIDLAYER_FREQS: np.ndarray = field(default_factory=lambda: MIDLAYER_FREQS)
+    MIDLAYER_LP_HZ: float = MIDLAYER_LP_HZ
+    # Low pad lowpass corner. v2 used a fixed 700 Hz base (a very muffled
+    # pad -- a direct contributor to "dark cave"); v2.2 opens it so the saw
+    # keeps a few audible harmonics. The OU walk (bed_cutoff_oct) still
+    # rides on top and the hard ceiling keeps it out of "buzzy".
+    BED_LP_BASE_HZ: float = BED_LP_BASE_HZ
+    BED_LP_MAX_HZ: float = BED_LP_MAX_HZ
+    SHIMMER_HARMONICS: tuple = SHIMMER_HARMONICS
+    SHIMMER_SUS2_SLOT: int = SHIMMER_SUS2_SLOT
+    SHIMMER_FIFTH_SLOT: int = SHIMMER_FIFTH_SLOT
+    SHIMMER_SUS4_RATIO: float = SHIMMER_SUS4_RATIO
+    VI_RATIO: float = _VI_RATIO   # C -> A below (I -> vi), the "darker room"
+    SUPERSAW_VOICES: int = SUPERSAW_VOICES
+    SUPERSAW_CENTS: np.ndarray = field(default_factory=lambda: SUPERSAW_CENTS)
+    SUPERSAW_AMPS: np.ndarray = field(default_factory=lambda: SUPERSAW_AMPS)
+
+    # -- mix calibration --
+    # All *_CAL_DB values are trims that make each layer's nominal dBFS
+    # label (the numbers in BRIEF-v2.md/v2.2.md section 2) correspond to
+    # that layer's measured RMS at the output. They were set by
+    # measurement, not by ear-guessing: see VERIFICATION.md "tuning
+    # changes" and tools/lab.py.
+    AMBIENT_WET_GAIN: float = AMBIENT_WET_GAIN
+    AMBIENT_DRY_GAIN: float = AMBIENT_DRY_GAIN
+    AMBIENT_MASTER_HEADROOM_DB: float = AMBIENT_MASTER_HEADROOM_DB
+    BED_CAL_DB: float = BED_CAL_DB
+    MIDLAYER_CAL_DB: float = MIDLAYER_CAL_DB
+    AIR_CAL_DB: float = AIR_CAL_DB
+    DROP_CAL_DB: float = DROP_CAL_DB
+    DROP_AMP_SPREAD_DB: float = DROP_AMP_SPREAD_DB
+    NOTE_EMBED_CAP_DB: float = NOTE_EMBED_CAP_DB
+    NOTE_EMBED_CAP_IDLE_DB: float = NOTE_EMBED_CAP_IDLE_DB
+    KNOCK_EMBED_CAP_DB: float = KNOCK_EMBED_CAP_DB
+    DUCK_DEPTH_DB: float = DUCK_DEPTH_DB
+    DUCK_ATTACK_S: float = DUCK_ATTACK_S
+    DUCK_HOLD_S: float = DUCK_HOLD_S
+    DUCK_RELEASE_S: float = DUCK_RELEASE_S
+    DUCK_TOTAL_S: float = DUCK_TOTAL_S
+    DUCK_SMOOTH_S: float = DUCK_SMOOTH_S
+    NOTE_REVERB_SEND_DB: float = NOTE_REVERB_SEND_DB
+    NOTE_DIRECT_FRAC: float = NOTE_DIRECT_FRAC
+    NOTE_REVERB_FRAC: float = NOTE_REVERB_FRAC
+    SUBBASS_CAL_DB: float = SUBBASS_CAL_DB
+    STEM_CAL_DB: float = STEM_CAL_DB
+    STEM_DETUNE_CENTS: np.ndarray = field(default_factory=lambda: STEM_DETUNE_CENTS)
+    STEM_LP_HZ: float = STEM_LP_HZ
+    WHOOSH_CAL_DB: float = WHOOSH_CAL_DB
+
+    # -- L1b "air" continuous shaped-noise bed --
+    AIR_TILT_LO_HZ: float = AIR_TILT_LO_HZ
+    AIR_TILT_HI_IDLE_HZ: float = AIR_TILT_HI_IDLE_HZ
+    AIR_TILT_HI_ACTIVE_HZ: float = AIR_TILT_HI_ACTIVE_HZ
+    AIR_HP_HZ: float = AIR_HP_HZ
+    AIR_DECORR: float = AIR_DECORR
+    ACTIVITY_MED_TAU: float = ACTIVITY_MED_TAU
+    AIR_GLOOM_DEPTH: float = AIR_GLOOM_DEPTH
+    AIR_FLOOR_OFFSET_DB: float = AIR_FLOOR_OFFSET_DB
+    AIR_ACTIVITY_RANGE_DB: float = AIR_ACTIVITY_RANGE_DB
+    AIR_WASH_BOOST_RANGE_DB: float = AIR_WASH_BOOST_RANGE_DB
+    AIR_WASH_BOOST_HZ: float = AIR_WASH_BOOST_HZ
+    PINK_POLES: tuple = _PINK_POLES
+
+
+# Single instance, defaults only (no env/file loading) -- see AmbientConfig
+# docstring. Passed into AmbientTheme.__init__ as `cfg`.
+AMBIENT_CONFIG = AmbientConfig()
+
+
 def _air_norm_factor(sr, hi_cut, hp_ba):
     """RMS normalisation for the air chain (white -> pink -> LP_lo -> LP_hi ->
     HP), computed analytically from the cascaded frequency response so it is
@@ -1625,7 +1722,9 @@ class AmbientTheme:
     """
 
     def __init__(self, sr=SAMPLE_RATE, volume=0.5, mute=False, clicks_enabled=True,
-                 chimes_enabled=True, drone_enabled=False, quiet=False, seed=0):
+                 chimes_enabled=True, drone_enabled=False, quiet=False, seed=0,
+                 cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self.sr = sr
         self.volume = volume
         self.mute = mute
