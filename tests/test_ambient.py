@@ -220,8 +220,14 @@ def test_failure_knock_localized_transient():
         band = mono
     knock_rms = window_rms(band, 6.05, 0.15)
     # median of several baseline windows well away from the event, to avoid
-    # flakiness from a coincidental bloom note landing near a single sample
-    baselines = [window_rms(band, c, 0.3) for c in (1.0, 3.0, 4.5, 9.0, 10.5)]
+    # flakiness from a coincidental bloom note -- or, since v2.3, a
+    # coincidental woodblock drop grain (the new default drop timbre has
+    # real energy in this knock's 80-400Hz band, unlike the old noise-tick
+    # default which was centered at 1.8-3.5kHz) -- landing near a single
+    # sample window. Widened from 5 to 10 windows in v2.3 after the smaller
+    # sample proved sensitive to exactly that at some seeds.
+    baselines = [window_rms(band, c, 0.3)
+                 for c in (0.5, 1.0, 1.5, 3.0, 3.5, 4.5, 9.0, 9.5, 10.5, 11.0)]
     baseline = float(np.median(baselines))
     # v2.2 CHANGE: threshold relaxed from 1.5x to 1.2x. The embedding rule
     # (BRIEF-v2.2.md section 4: knock peak <= bed RMS + 14 dB, tracked off the
@@ -856,13 +862,22 @@ def test_v22_stereo_pan_limits_drops_and_notes():
 
 
 def test_v22_no_sine_chirp_drops_are_noise_band():
-    """BRIEF-v2.2.md section 3: drops are filtered-noise ticks, NOT downward
-    sine chirps (the v2 "birds or drops?" confusion). Spectral flatness
-    (geometric/arithmetic mean of the power spectrum) is near-zero for a pure
-    tone/chirp and much higher (order 1e-2) for a bandpassed noise burst;
-    every pre-rendered drop variant must read as noise-band, not tonal."""
+    """BRIEF-v2.2.md section 3: drop_timbre="noise" drops are filtered-noise
+    ticks, NOT downward sine chirps (the v2 "birds or drops?" confusion).
+    Spectral flatness (geometric/arithmetic mean of the power spectrum) is
+    near-zero for a pure tone/chirp and much higher (order 1e-2) for a
+    bandpassed noise burst; every pre-rendered "noise" drop variant must
+    read as noise-band, not tonal.
+
+    v2.3 CHANGE: "noise" is no longer the shipped default (round-2/3 blind
+    evidence: this timbre reads as "white noise/chaos" in the full mix --
+    see research/BRIEF-v2.3.md), so this now exercises drop_timbre="noise"
+    explicitly rather than the bank-builder default. The default timbre
+    (woodblock) is deliberately tonal/modal -- see
+    test_v23_drop_timbre_woodblock_is_tonal_not_noise below for its own,
+    opposite assertion."""
     rng = np.random.default_rng(9)
-    bank = sonifier._build_drop_bank(rng, SR, count=14)
+    bank = sonifier._build_drop_bank(rng, SR, count=14, timbre="noise")
     for i, grain in enumerate(bank):
         n = len(grain)
         spec = np.abs(np.fft.rfft(grain * np.hanning(n))) ** 2
@@ -876,6 +891,91 @@ def test_v22_no_sine_chirp_drops_are_noise_band():
             f"drop variant #{i} reads as tonal (flatness={flatness:.5f}), "
             f"expected a noise-band tick"
         )
+
+
+def test_v23_drop_timbre_woodblock_is_tonal_not_noise():
+    """v2.3: the default drop_timbre ("woodblock") is a damped MODAL click,
+    the opposite spectral shape from the old noise-tick default -- this pins
+    that it reads as tonal (low spectral flatness), mirroring
+    test_v22_no_sine_chirp_drops_are_noise_band's noise-band assertion for
+    the "noise" timbre but in the other direction."""
+    rng = np.random.default_rng(9)
+    bank = sonifier._build_drop_bank(rng, SR, count=14, timbre="woodblock")
+    flatnesses = []
+    for grain in bank:
+        n = len(grain)
+        spec = np.abs(np.fft.rfft(grain * np.hanning(n))) ** 2
+        spec = spec[spec > 0]
+        if len(spec) < 4:
+            continue
+        gm = float(np.exp(np.mean(np.log(spec + 1e-30))))
+        am = float(np.mean(spec))
+        flatnesses.append(gm / max(am, 1e-30))
+    assert flatnesses, "expected woodblock grains to analyze"
+    assert max(flatnesses) < 0.002, (
+        f"woodblock drop reads as noise-band (flatness={max(flatnesses):.5f}), "
+        f"expected a tonal/modal click"
+    )
+
+
+def test_v23_drop_timbre_noise_matches_legacy_v22_output():
+    """v2.3 regression guard for the timbre change: drop_timbre="noise" must
+    still be byte-for-byte the v2.2 grain synthesis (same RNG draws, same
+    _render_one_drop_variant math)."""
+    rng_a = np.random.default_rng(42)
+    bank_new = sonifier._build_drop_bank(rng_a, SR, timbre="noise")
+    rng_b = np.random.default_rng(42)
+    bank_legacy = [sonifier._render_one_drop_variant(rng_b, SR) for _ in range(14)]
+    assert len(bank_new) == len(bank_legacy)
+    for a, b in zip(bank_new, bank_legacy):
+        assert np.array_equal(a, b), "noise-timbre drop bank diverged from the legacy v2.2 synthesis"
+
+
+def test_v23_ambient_theme_drop_timbre_config_reaches_rain_layer():
+    """Confirms the drop_timbre AmbientConfig knob actually reaches
+    RainLayer's drop bank end to end: an AmbientTheme built with
+    drop_timbre="noise" produces a noise-band (high spectral flatness) bank,
+    while the default (woodblock) produces a tonal/modal (low flatness)
+    one -- the same discriminator test_v22_no_sine_chirp_drops_are_noise_band
+    / test_v23_drop_timbre_woodblock_is_tonal_not_noise use, applied to
+    AmbientTheme's actual constructed state rather than calling
+    _build_drop_bank directly."""
+    def flatness(grain):
+        n = len(grain)
+        spec = np.abs(np.fft.rfft(grain * np.hanning(n))) ** 2
+        spec = spec[spec > 0]
+        gm = float(np.exp(np.mean(np.log(spec + 1e-30))))
+        am = float(np.mean(spec))
+        return gm / max(am, 1e-30)
+
+    noise_state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7,
+                                        cfg=sonifier.AmbientConfig(drop_timbre="noise"))
+    assert min(flatness(g) for g in noise_state.rain.drop_bank) > 0.002, (
+        "AmbientTheme(drop_timbre='noise') did not build a noise-band bank")
+
+    wood_state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7)
+    assert max(flatness(g) for g in wood_state.rain.drop_bank) < 0.002, (
+        "AmbientTheme's default drop_timbre did not build a tonal/modal bank")
+
+
+def test_v23_drop_timbre_switching_produces_distinct_nonsilent_banks():
+    """Each drop_timbre produces non-silent, mutually distinct grain banks
+    (a basic sanity check that the config knob actually reaches the
+    synthesis, not a claim about which sounds best -- that's the blind-test
+    kits' job)."""
+    banks = {}
+    for timbre in sonifier.DROP_TIMBRES:
+        rng = np.random.default_rng(5)
+        bank = sonifier._build_drop_bank(rng, SR, count=4, timbre=timbre)
+        assert all(np.max(np.abs(g)) > 0.0 for g in bank), f"{timbre} produced a silent grain"
+        banks[timbre] = np.concatenate(bank)
+    names = list(banks)
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            a, b = banks[names[i]], banks[names[j]]
+            n = min(len(a), len(b))
+            assert not np.array_equal(a[:n], b[:n]), (
+                f"{names[i]} and {names[j]} produced identical grains")
 
 
 def test_v22_reverb_rt60_in_target_range():
@@ -934,9 +1034,16 @@ def test_v22_drops_are_audible_over_the_bed():
     taps were 2 dB UNDER the bed and a "read" tap 7 dB under, so the mapping
     carried almost no audible information and the onset-based criteria
     (N1/N4/9b) had nothing to detect. Every drop class must now clear the
-    bed's own band level."""
+    bed's own band level.
+
+    v2.3 CHANGE: exercises drop_timbre="noise" explicitly. This test's
+    1.2-6kHz measurement band is tuned to that timbre's spectral register
+    (noise-tick center 1.8-3.5kHz); the new default (woodblock, fundamental
+    800-1200Hz) sits in a different register and would need its own
+    band/threshold derivation, which is future work, not a regression of
+    this pin."""
     rng = np.random.default_rng(0)
-    bank = sonifier._build_drop_bank(rng, SR)
+    bank = sonifier._build_drop_bank(rng, SR, timbre="noise")
 
     # bed reference: an idle-but-alive render, same output chain
     bed, _ = render_events([(0.0, {"hook_event_name": "SessionStart"})], 25.0, seed=3)
@@ -953,7 +1060,9 @@ def test_v22_drops_are_audible_over_the_bed():
                              np.arange(n), base)
         for amp in (-sonifier.DROP_AMP_SPREAD_DB, 0.0, sonifier.DROP_AMP_SPREAD_DB):
             g = sonifier._db_to_lin(cls_db + amp + sonifier.DROP_CAL_DB) * chain
-            y = np.zeros(int(0.1 * SR))
+            # buffer sized to fit the grain (was a fixed 0.1s tuned to the
+            # old ~5-10ms noise-tick grain; drop grains can now run longer)
+            y = np.zeros(max(int(0.1 * SR), len(base) + 100))
             y[100:100 + len(base)] = base * g
             peak = float(np.max(_band_frame_db(y)))
             excess = peak - bed_db

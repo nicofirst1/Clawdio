@@ -236,19 +236,40 @@ def _ridge_r(seg, sr):
 def check_birds(x, sr, rep, seed=0):
     """Is a rain tap distinguishable from a bird call?
 
-    Leg 1 (deterministic, high margin): the engine's own drop-grain bank.
-    Leg 2/3 (in-situ): isolated onsets in the actual render, measured
-    RELATIVE to the local bed -- an absolute flatness threshold is
-    meaningless on the mix, whose own flatness over 800-8000 Hz is ~0.07
-    because the mix deliberately rolls off above 2.6 kHz.
+    The complaint (v2: "birds or drops?") is about two DIFFERENT failure
+    modes that both read as wildlife: (a) a downward sine chirp (v2's own
+    drop timbre -- a literal bird-call signature), and (b) broadband noise
+    with no identity of its own reading as generic "hiss/chaos" (round-2/3
+    blind evidence against v2.2's noise-tick default). v2.2 fixed (a) by
+    making every drop broadband noise, which is why this check's "grain is
+    noise" / "in-mix noise-not-tone" legs assert HIGH spectral flatness --
+    that was the right invariant for THAT timbre. v2.3's default (a damped
+    modal click, tonal by design -- see research/BRIEF-v2.3.md) fixes (b)
+    by moving the other direction, so those two legs would fail it for
+    being exactly what it's supposed to be. The invariant that actually
+    traces to the complaint, for ANY timbre, is "not a downward chirp"
+    (leg 3, ridge r) plus -- for a tonal timbre -- "the pitch is a clean
+    held/decaying tone, not a swept one" (checked the same way). The
+    flatness legs only apply while the shipped default is the noise timbre;
+    they report N/A (not a silent pass) for tonal timbres rather than being
+    skipped outright, so a future re-tune back to a noise timbre is still
+    caught if it regresses.
     """
+    drop_timbre = getattr(getattr(_engine, "AMBIENT_CONFIG", None), "drop_timbre", "noise") \
+        if _engine is not None else "noise"
+    is_noise_timbre = drop_timbre == "noise"
+
     # -- leg 1: the grain bank itself
     if _engine is None:
         rep.add("birds/grain is noise", f"flatness >= {BIRDS_BANK_FLATNESS_MIN}",
                 "n/a - engine not importable", None)
+    elif not is_noise_timbre:
+        rep.add("birds/grain is noise", f"flatness >= {BIRDS_BANK_FLATNESS_MIN}",
+                f"n/a - drop_timbre={drop_timbre!r} is tonal by design", None,
+                note="only applies to the noise-tick timbre; see check_birds docstring")
     else:
         rng = np.random.default_rng(seed)
-        bank = _engine._build_drop_bank(rng, sr)
+        bank = _engine._build_drop_bank(rng, sr, timbre=drop_timbre)
         flats = []
         for g in bank:
             w = np.zeros(int(0.016 * sr))
@@ -279,11 +300,17 @@ def check_birds(x, sr, rep, seed=0):
         rep.add("birds/no-downward-chirp", f"ridge r >= {BIRDS_CHIRP_MIN_R}",
                 "n/a - no isolated onsets in render", None)
         return
-    med_ratio = float(np.median(ratios))
-    rep.add("birds/in-mix noise-not-tone", f"median ratio >= {BIRDS_FLATNESS_RATIO_MIN}",
-            f"{med_ratio:.2f} (n={len(ratios)})", med_ratio >= BIRDS_FLATNESS_RATIO_MIN,
-            note="onset-window spectral flatness / local bed flatness; "
-                 "v2-chirp positive control measures 0.43")
+    if is_noise_timbre:
+        med_ratio = float(np.median(ratios))
+        rep.add("birds/in-mix noise-not-tone", f"median ratio >= {BIRDS_FLATNESS_RATIO_MIN}",
+                f"{med_ratio:.2f} (n={len(ratios)})", med_ratio >= BIRDS_FLATNESS_RATIO_MIN,
+                note="onset-window spectral flatness / local bed flatness; "
+                     "v2-chirp positive control measures 0.43")
+    else:
+        med_ratio = float(np.median(ratios))
+        rep.add("birds/in-mix noise-not-tone", f"median ratio >= {BIRDS_FLATNESS_RATIO_MIN}",
+                f"n/a - drop_timbre={drop_timbre!r} is tonal by design ({med_ratio:.2f})", None,
+                note="only applies to the noise-tick timbre; see check_birds docstring")
     worst_r = float(np.min(rs))
     rep.add("birds/no-downward-chirp", f"ridge r >= {BIRDS_CHIRP_MIN_R}",
             f"{worst_r:+.2f} (most monotone of {len(rs)})", worst_r >= BIRDS_CHIRP_MIN_R,

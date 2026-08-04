@@ -1235,17 +1235,106 @@ def _mix_voices(pool, n):
     return reverb_bus, direct_bus
 
 
-# -- L2: rain drop grain bank (brief-v2.2 section 3) ---------------------------
+# -- L2: rain drop grain bank (brief-v2.2 section 3; v2.3 timbre, see
+# research/BRIEF-v2.3.md and lit-review-annoyance rec #3) ---------------------
+
+DROP_TIMBRES = ("woodblock", "marimba", "plink", "noise")
+
+
+def _render_drop_woodblock(rng, sr=SAMPLE_RATE):
+    """v2.3 default: damped woodblock modal click, same modal-synthesis
+    family as _render_knock (PostToolUseFailure) but pitched up an
+    octave-plus into the "tick" range and much shorter (<150ms vs the
+    knock's 70-110ms tau). Round-2/3 blind evidence: noise-tick drops read
+    as "white noise/chaos"; lit-review rec #3 recommends reusing the
+    project's existing damped-modal primitive for routine drops instead of
+    a broadband noise burst. Mode ratios/decay cribbed from
+    eval/blind/make_timbre_clips.py's render_woodblock (round-3 winning
+    candidate family, read-only reference -- reimplemented here so the
+    engine doesn't depend on the eval script)."""
+    f0 = rng.uniform(800.0, 1200.0)
+    ratios = (1.0, 1.47, 2.09)
+    amps = (1.0, 0.45, 0.22)
+    tau = rng.uniform(0.05, 0.15)
+    dur = min(0.3, 6 * tau)
+    n = max(int(0.01 * sr), int(dur * sr))
+    t = np.arange(n) / sr
+    sig = np.zeros(n)
+    for i, (r, a) in enumerate(zip(ratios, amps)):
+        phase = 0.4 * i  # decorrelate mode phases (avoid coherent peak sum)
+        sig += a * np.sin(2 * np.pi * f0 * r * t + phase) * np.exp(-t / tau)
+    # brief contact transient: tiny noise burst at onset, tightly damped
+    transient_n = min(n, int(0.003 * sr))
+    transient = rng.standard_normal(transient_n) * np.exp(-np.arange(transient_n) / sr / 0.0015)
+    sig[:transient_n] += 0.15 * transient
+    attack_n = min(n, max(1, int(0.001 * sr)))
+    env = np.ones(n)
+    env[:attack_n] = _raised_cosine_attack(attack_n)
+    sig *= env
+    peak = float(np.max(np.abs(sig))) + 1e-9
+    return (sig / peak).astype(np.float64)
+
+
+def _render_drop_marimba(rng, sr=SAMPLE_RATE):
+    """v2.3 A/B candidate: muted marimba/soft mallet, fundamental 400-700 Hz,
+    longer/darker decay and a soft raised-cosine attack. Cribbed from
+    eval/blind/make_timbre_clips.py's render_marimba (read-only
+    reference)."""
+    f0 = rng.uniform(400.0, 700.0)
+    ratios = (1.0, 2.76, 5.4)  # bar-like inharmonic partials, marimba-ish
+    amps = (1.0, 0.28, 0.10)
+    tau = rng.uniform(0.18, 0.32)
+    dur = min(0.5, 6 * tau)
+    n = max(int(0.02 * sr), int(dur * sr))
+    t = np.arange(n) / sr
+    sig = np.zeros(n)
+    for i, (r, a) in enumerate(zip(ratios, amps)):
+        phase = 0.6 * i
+        sig += a * np.sin(2 * np.pi * f0 * r * t + phase) * np.exp(-t / tau)
+    attack_n = min(n, max(1, int(0.006 * sr)))  # soft mallet attack
+    env = np.ones(n)
+    env[:attack_n] = _raised_cosine_attack(attack_n)
+    sig *= env
+    peak = float(np.max(np.abs(sig))) + 1e-9
+    return (sig / peak).astype(np.float64)
+
+
+def _render_drop_plink(rng, sr=SAMPLE_RATE):
+    """v2.3 A/B candidate: water-drop "plink" -- single decaying sine with a
+    small (<5%) downward pitch envelope (not a chirp/sweep, just enough
+    droop to read as a liquid drop) plus a quiet damped body resonance an
+    octave down. Cribbed from eval/blind/make_timbre_clips.py's
+    render_plink (read-only reference)."""
+    f0 = rng.uniform(1000.0, 1600.0)
+    tau = rng.uniform(0.08, 0.14)
+    dur = min(0.25, 6 * tau)
+    n = max(int(0.01 * sr), int(dur * sr))
+    t = np.arange(n) / sr
+    pitch_drop = rng.uniform(0.02, 0.045)  # <5% downward
+    inst_freq = f0 * (1.0 - pitch_drop * (1.0 - np.exp(-t / (tau * 0.6))))
+    phase = 2 * np.pi * np.cumsum(inst_freq) / sr
+    sig = np.sin(phase) * np.exp(-t / tau)
+    body = 0.25 * np.sin(2 * np.pi * (f0 / 2.0) * t) * np.exp(-t / (tau * 1.6))
+    sig = sig + body
+    attack_n = min(n, max(1, int(0.0008 * sr)))
+    env = np.ones(n)
+    env[:attack_n] = _raised_cosine_attack(attack_n)
+    sig *= env
+    peak = float(np.max(np.abs(sig))) + 1e-9
+    return (sig / peak).astype(np.float64)
+
 
 def _render_one_drop_variant(rng, sr=SAMPLE_RATE):
-    """One pre-rendered drop variant: a filtered-noise "tick", NOT a sine
-    chirp. v2 listener evidence: the downward sine chirp reads as a bird-call
-    signature and was confusable with melodic notes ("birds or drops?").
-    v2.2 kills the chirp entirely -- every drop is now a 4-10 ms burst of
-    white noise through an RBJ bandpass (1.8-3.5 kHz, Q 2-4) with a sharp
-    exponential decay: reads as a rain-patter/typewriter-adjacent tick, has no
-    tonal center a listener could mistake for wildlife or a melodic note.
-    Returned mono, peak-normalized."""
+    """v2.2 legacy timbre, kept for A/B (drop_timbre="noise"): a filtered-
+    noise "tick", NOT a sine chirp. v2 listener evidence: the downward sine
+    chirp reads as a bird-call signature and was confusable with melodic
+    notes ("birds or drops?"). v2.2 killed the chirp entirely -- every drop
+    a 4-10 ms burst of white noise through an RBJ bandpass (1.8-3.5 kHz, Q
+    2-4) with a sharp exponential decay. v2.3 replaced this as the DEFAULT
+    (round-2/3 blind evidence: this timbre itself reads as "white noise/
+    chaos" in the full mix), but it's kept selectable since it's the
+    measured control for the drop_timbre A/B. Returned mono, peak-
+    normalized."""
     dur = rng.uniform(0.004, 0.010)
     n = max(4, int(dur * sr))
     noise = rng.standard_normal(n)
@@ -1260,8 +1349,21 @@ def _render_one_drop_variant(rng, sr=SAMPLE_RATE):
     return sig.astype(np.float64)
 
 
-def _build_drop_bank(rng, sr=SAMPLE_RATE, count=14):
-    return [_render_one_drop_variant(rng, sr) for _ in range(count)]
+_DROP_RENDER_FNS = {
+    "woodblock": _render_drop_woodblock,
+    "marimba": _render_drop_marimba,
+    "plink": _render_drop_plink,
+    "noise": _render_one_drop_variant,
+}
+
+
+def _build_drop_bank(rng, sr=SAMPLE_RATE, count=14, timbre="woodblock"):
+    """timbre="noise" reproduces the exact v2.2 grain bank (same RNG call
+    sequence as the pre-v2.3 _build_drop_bank(rng, sr, count)) -- this is
+    the regression guard for the v2.3 timbre change: render with
+    drop_timbre="noise" and the output must stay bit-identical."""
+    render_fn = _DROP_RENDER_FNS.get(timbre, _render_drop_woodblock)
+    return [render_fn(rng, sr) for _ in range(count)]
 
 
 # -- L3: 2-op FM e-piano / bell voice (brief section 2) ------------------------
@@ -1653,6 +1755,10 @@ class AmbientConfig:
     DROP_MIN_GAP_S: float = DROP_MIN_GAP_S
     BURST_COALESCE_WINDOW_S: float = BURST_COALESCE_WINDOW_S
     DROP_RATE_SCALE: float = DROP_RATE_SCALE
+    # v2.3 drop timbre (round-2/3 blind evidence + lit-review rec #3): one of
+    # DROP_TIMBRES ("woodblock" default, "marimba"/"plink" A/B candidates,
+    # "noise" = exact v2.2 legacy grain, kept for regression/A-B comparison).
+    drop_timbre: str = "woodblock"
     NOTE_EMBED_CAP_DB: float = NOTE_EMBED_CAP_DB
     NOTE_EMBED_CAP_IDLE_DB: float = NOTE_EMBED_CAP_IDLE_DB
     KNOCK_EMBED_CAP_DB: float = KNOCK_EMBED_CAP_DB
@@ -2048,13 +2154,13 @@ class RainLayer:
     passing its own _ingress_rng) and monkeypatched directly by the test
     suite."""
 
-    def __init__(self, rng, queue_voice, sr, rain_enabled):
+    def __init__(self, rng, queue_voice, sr, rain_enabled, drop_timbre="woodblock"):
         self._rng = rng
         self._queue_voice = queue_voice
         self.sr = sr
         self.rain_enabled = rain_enabled
 
-        self.drop_bank = _build_drop_bank(rng, sr)
+        self.drop_bank = _build_drop_bank(rng, sr, timbre=drop_timbre)
         self.rain_next_dt = 0.05
         self.rain_bed_gain_db = Slew(-80.0, tau=2.0)
         self._pink_zi = None
@@ -2513,7 +2619,8 @@ class AmbientTheme:
         # identical to the pre-split single-__init__ sequence for
         # byte-identical renders under a fixed seed.
         self.bed = BedLayer(self._rng, self._apply_lp_stage, sr)
-        self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled)
+        self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled,
+                               drop_timbre=self.cfg.drop_timbre)
         self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr)
         self.stem = StemLayer(self._rng, self._apply_lp_stage, sr)
         self.weather = WeatherLayer(sr)
