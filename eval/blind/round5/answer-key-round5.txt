@@ -1,0 +1,4 @@
+M = failure_stop (ground truth: Succeeded)
+N = success_v24 (ground truth: Succeeded)
+O = still_going (ground truth: Still going)
+P = success_v22 (ground truth: Succeeded)

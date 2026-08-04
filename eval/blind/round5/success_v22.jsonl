@@ -1,0 +1,16 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart"}}
+{"t": 1.0, "event": {"hook_event_name": "UserPromptSubmit", "prompt": "do a bunch of stuff"}}
+{"t": 3.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 3.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 5.2, "event": {"hook_event_name": "PreToolUse", "tool_name": "Grep", "tool_input": {"file_path": "z.py"}}}
+{"t": 5.6, "event": {"hook_event_name": "PostToolUse", "tool_name": "Grep"}}
+{"t": 7.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 7.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Read"}}
+{"t": 9.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py"}}}
+{"t": 9.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 10.6, "event": {"hook_event_name": "PreToolUse", "tool_name": "Edit", "tool_input": {"file_path": "z.py"}}}
+{"t": 11.0, "event": {"hook_event_name": "PostToolUse", "tool_name": "Edit"}}
+{"t": 12.0, "event": {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "z.py"}}}
+{"t": 12.4, "event": {"hook_event_name": "PostToolUse", "tool_name": "Write"}}
+{"t": 14.5, "event": {"hook_event_name": "Stop"}}
+{"t": 31.5, "event": {"hook_event_name": "_DurationMarker"}}
