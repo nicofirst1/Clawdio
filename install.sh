@@ -6,18 +6,28 @@
 #      optional (needed only for live audio playback, not --render).
 #   2. Uses the project files in place (this repo IS the install; nothing
 #      is copied elsewhere) and makes the hook scripts executable.
-#   3. Prints merge instructions for hooks/settings-snippet.json into
-#      ~/.claude/settings.json, or -- if `jq` is present -- offers to merge
-#      it automatically, ALWAYS backing up the existing file to
-#      settings.json.bak.<timestamp> first, never overwriting blind.
+#   3. Prints merge instructions for hooks/settings-snippet.json into the
+#      target settings.json (global or project-scoped, see below), or --
+#      if `jq` is present -- offers to merge it automatically, ALWAYS
+#      backing up the existing file to settings.json.bak.<timestamp> first,
+#      never overwriting blind.
+#
+# Scope (where the hooks get installed):
+#   --global   Merge into "$CLAUDE_DIR/settings.json" (applies to every
+#              Claude Code project on this machine).
+#   --project  Merge into "<repo>/.claude/settings.json" (this project only).
+#   Neither given + interactive (a tty): prompts. Neither given +
+#   non-interactive: defaults to --global (and says so).
 #
 # Flags:
 #   --dry-run        Print what would happen; make no changes anywhere.
 #   --yes / -y        Non-interactive: assume "yes" to the merge prompt.
-#   --no-merge         Never touch ~/.claude/settings.json, just print
-#                      instructions.
-#   --claude-dir DIR  Override the Claude config dir (default: ~/.claude).
-#                      Mainly for testing: install.sh --claude-dir
+#   --no-merge         Never touch settings.json, just print instructions.
+#   --global          Install hooks globally (see Scope above).
+#   --project          Install hooks for this project only (see Scope above).
+#   --claude-dir DIR  Override the Claude config dir used for --global
+#                      (default: $CLAUDE_CONFIG_DIR or ~/.claude). Mainly
+#                      for testing: install.sh --global --claude-dir
 #                      /tmp/fakehome/.claude
 #
 # Safe to re-run: merging is idempotent (keyed by our hook commands; running
@@ -29,16 +39,20 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -
 DRY_RUN=0
 ASSUME_YES=0
 NO_MERGE=0
+SCOPE=""
 CLAUDE_DIR="${CLAUDE_DIR:-${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}}"
 
 usage() {
     cat <<EOF
-Usage: install.sh [--dry-run] [--yes|-y] [--no-merge] [--claude-dir DIR]
+Usage: install.sh [--dry-run] [--yes|-y] [--no-merge] [--global|--project] [--claude-dir DIR]
 
   --dry-run          Show what would happen; make no changes.
   --yes, -y          Non-interactive: assume yes for the settings merge.
-  --no-merge         Never touch ~/.claude/settings.json; print instructions only.
-  --claude-dir DIR   Claude config directory (default: \$HOME/.claude).
+  --no-merge         Never touch settings.json; print instructions only.
+  --global           Install hooks in \$CLAUDE_DIR/settings.json (every project).
+  --project          Install hooks in <repo>/.claude/settings.json (this project only).
+                      Neither flag + interactive: prompts. Neither + non-interactive: --global.
+  --claude-dir DIR   Claude config directory for --global (default: \$CLAUDE_CONFIG_DIR or \$HOME/.claude).
 EOF
 }
 
@@ -47,6 +61,8 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY_RUN=1 ;;
         --yes|-y) ASSUME_YES=1 ;;
         --no-merge) NO_MERGE=1 ;;
+        --global) SCOPE="global" ;;
+        --project) SCOPE="project" ;;
         --claude-dir) CLAUDE_DIR="$2"; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown flag: $1" >&2; usage >&2; exit 2 ;;
@@ -64,9 +80,36 @@ run() {
     fi
 }
 
+SCOPE_PROMPTED=0
+if [ -z "$SCOPE" ]; then
+    if [ -t 0 ]; then
+        printf 'Install hooks globally (every Claude Code project on this machine) or just for this project? [g/P] '
+        read -r reply || reply=""
+        case "$reply" in
+            g|G|global) SCOPE="global" ;;
+            *) SCOPE="project" ;;
+        esac
+        SCOPE_PROMPTED=1
+    else
+        SCOPE="global"
+    fi
+fi
+
+if [ "$SCOPE" = "project" ]; then
+    SETTINGS_DIR="$SCRIPT_DIR/.claude"
+else
+    SETTINGS_DIR="$CLAUDE_DIR"
+fi
+
 say "== claude-geiger installer =="
 say "project dir: $SCRIPT_DIR"
-say "claude dir:  $CLAUDE_DIR"
+say "scope:       $SCOPE"
+if [ "$SCOPE" = "global" ]; then
+    say "claude dir:  $CLAUDE_DIR"
+    if [ "$SCOPE_PROMPTED" -eq 0 ]; then
+        say "  (no --global/--project given and not running interactively: defaulting to --global)"
+    fi
+fi
 [ "$DRY_RUN" -eq 1 ] && say "(--dry-run: no changes will be made)"
 say ""
 
@@ -144,9 +187,9 @@ say ""
 # ---------------------------------------------------------------------
 
 SNIPPET="$SCRIPT_DIR/hooks/settings-snippet.json"
-SETTINGS="$CLAUDE_DIR/settings.json"
+SETTINGS="$SETTINGS_DIR/settings.json"
 
-say "-- Claude Code settings --"
+say "-- Claude Code settings ($SCOPE) --"
 
 if [ ! -f "$SNIPPET" ]; then
     say "ERROR: $SNIPPET not found." >&2
@@ -160,27 +203,41 @@ manual_instructions() {
     say "    $SETTINGS"
     say "  (creating $SETTINGS with just that content if it doesn't exist yet)."
     say ""
-    say "  Command paths in the snippet are written as \${CLAUDE_PROJECT_DIR}/hooks/...,"
-    say "  which only resolves when this project ($SCRIPT_DIR)"
-    say "  IS the Claude Code project root. Since $SETTINGS is"
-    say "  read for EVERY project, replace \${CLAUDE_PROJECT_DIR} with the absolute"
-    say "  path $SCRIPT_DIR so the hooks resolve everywhere"
-    say "  (this is exactly what the auto-merge below does)."
+    if [ "$SCOPE" = "global" ]; then
+        say "  Command paths in the snippet are written as \${CLAUDE_PROJECT_DIR}/hooks/...,"
+        say "  which only resolves when this project ($SCRIPT_DIR)"
+        say "  IS the Claude Code project root. Since $SETTINGS is"
+        say "  read for EVERY project, replace \${CLAUDE_PROJECT_DIR} with the absolute"
+        say "  path $SCRIPT_DIR so the hooks resolve everywhere"
+        say "  (this is exactly what the auto-merge below does)."
+    else
+        say "  Command paths in the snippet are written as \${CLAUDE_PROJECT_DIR}/hooks/...;"
+        say "  leave them as-is -- Claude Code sets \${CLAUDE_PROJECT_DIR} to this project's"
+        say "  path at hook runtime for project-scoped settings, so no rewriting is needed"
+        say "  (and the snippet stays portable if this repo is ever moved or cloned elsewhere)."
+    fi
 }
 
-# Emit the snippet with ${CLAUDE_PROJECT_DIR} rewritten to this project's
-# absolute path. settings.json is global (applies to every project), so a
-# ${CLAUDE_PROJECT_DIR}-relative command would point at a nonexistent script
-# in any other project and make every hook invocation fail there.
+# Emit the snippet, rewriting ${CLAUDE_PROJECT_DIR} to this project's
+# absolute path ONLY for global scope: settings.json there applies to every
+# project, so a ${CLAUDE_PROJECT_DIR}-relative command would point at a
+# nonexistent script in any other project and make every hook invocation
+# fail there. Project scope leaves it unexpanded -- Claude Code resolves
+# ${CLAUDE_PROJECT_DIR} to this project's own path at hook runtime for
+# project-scoped settings, so the snippet is merged verbatim.
 resolved_snippet() {
-    jq --arg dir "$SCRIPT_DIR" '
-        def fix:
-            if   type == "string" then gsub("\\$\\{CLAUDE_PROJECT_DIR\\}"; $dir)
-            elif type == "object" then with_entries(.value |= fix)
-            elif type == "array"  then map(fix)
-            else . end;
-        {hooks: (.hooks | fix)}
-    ' "$SNIPPET"
+    if [ "$SCOPE" = "global" ]; then
+        jq --arg dir "$SCRIPT_DIR" '
+            def fix:
+                if   type == "string" then gsub("\\$\\{CLAUDE_PROJECT_DIR\\}"; $dir)
+                elif type == "object" then with_entries(.value |= fix)
+                elif type == "array"  then map(fix)
+                else . end;
+            {hooks: (.hooks | fix)}
+        ' "$SNIPPET"
+    else
+        jq '{hooks: .hooks}' "$SNIPPET"
+    fi
 }
 
 if [ "$NO_MERGE" -eq 1 ]; then
@@ -203,10 +260,14 @@ else
     fi
 
     if [ "$do_merge" -eq 1 ]; then
-        run mkdir -p "$CLAUDE_DIR"
+        run mkdir -p "$SETTINGS_DIR"
 
         if [ "$DRY_RUN" -eq 1 ]; then
-            say "  [dry-run] would rewrite \${CLAUDE_PROJECT_DIR} -> $SCRIPT_DIR in the snippet's hook commands"
+            if [ "$SCOPE" = "global" ]; then
+                say "  [dry-run] would rewrite \${CLAUDE_PROJECT_DIR} -> $SCRIPT_DIR in the snippet's hook commands"
+            else
+                say "  [dry-run] would keep \${CLAUDE_PROJECT_DIR} unexpanded in the snippet's hook commands"
+            fi
             if [ -f "$SETTINGS" ]; then
                 say "  [dry-run] would back up $SETTINGS -> ${SETTINGS}.bak.<timestamp>"
                 say "  [dry-run] would merge hooks (per-event union with your existing hooks, deduped) into $SETTINGS"
@@ -257,7 +318,11 @@ else
                 cp "$snippet_tmp" "$SETTINGS"
                 say "  created $SETTINGS with the hooks block"
             fi
-            say "  hook commands point at $SCRIPT_DIR/hooks/ (absolute, so they work from any project)"
+            if [ "$SCOPE" = "global" ]; then
+                say "  hook commands point at $SCRIPT_DIR/hooks/ (absolute, so they work from any project)"
+            else
+                say "  hook commands use \${CLAUDE_PROJECT_DIR}/hooks/ (resolved by Claude Code at runtime for this project)"
+            fi
         fi
     else
         manual_instructions

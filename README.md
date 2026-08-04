@@ -19,12 +19,15 @@ Everything else — ingress (UDP/HTTP), ports, hooks, CLI (`--render`, `--check`
 
    This checks for `python3`, `numpy`, and `scipy` (all required — `scipy` is used by the default `ambient` theme's Freeverb/filtering; the legacy `geiger` theme runs without it), notes that `sounddevice` is optional (only needed for live audio playback — offline `--render` works without it), and makes `hooks/*.sh` executable.
 
-2. Wire the hooks into Claude Code. If you have `jq` installed, `install.sh` offers to merge `hooks/settings-snippet.json` into `~/.claude/settings.json` for you (always backing up the existing file to `settings.json.bak.<timestamp>` first — it never overwrites blind, and merging is additive: any hooks you already had for the same event are kept, not replaced). While merging it rewrites the snippet's `${CLAUDE_PROJECT_DIR}/hooks/...` commands to this project's absolute path, because `~/.claude/settings.json` applies to _every_ project and a project-relative command would break in all the others. Without `jq`, or if you decline, it prints the same instructions for a manual merge. You can also run it non-interactively:
+2. Wire the hooks into Claude Code. `install.sh` first decides **scope**: `--global` merges into `$CLAUDE_CONFIG_DIR/settings.json` (or `~/.claude/settings.json` if `$CLAUDE_CONFIG_DIR` isn't set) — applies to every Claude Code project on this machine; `--project` merges into `<repo>/.claude/settings.json` — this project only. Pass one of those flags, or run it interactively and it'll ask; with neither flag and no tty (e.g. in CI) it defaults to `--global` and says so.
+
+   If you have `jq` installed, `install.sh` then offers to merge `hooks/settings-snippet.json` into the target settings.json for you (always backing up the existing file to `settings.json.bak.<timestamp>` first — it never overwrites blind, and merging is additive: any hooks you already had for the same event are kept, not replaced). For `--global` it rewrites the snippet's `${CLAUDE_PROJECT_DIR}/hooks/...` commands to this project's absolute path, because a global settings.json applies to _every_ project and a project-relative command would break in all the others. For `--project` it leaves `${CLAUDE_PROJECT_DIR}` unexpanded — Claude Code resolves that to this project's own path at hook runtime for project-scoped settings, so no rewriting is needed (and the snippet stays correct if you ever move or re-clone this repo). Without `jq`, or if you decline, it prints the same instructions for a manual merge. You can also run it non-interactively:
 
    ```
-   ./install.sh --yes            # auto-merge without prompting
+   ./install.sh --global --yes   # auto-merge into the global settings.json without prompting
+   ./install.sh --project --yes  # auto-merge into <repo>/.claude/settings.json without prompting
    ./install.sh --no-merge       # never touch settings.json, just print instructions
-   ./install.sh --dry-run        # show what would happen, change nothing
+   ./install.sh --dry-run        # show what would happen, change nothing (combine with --global/--project)
    ```
 
 3. Start (or just use) Claude Code from this project directory. The `SessionStart` hook auto-launches `src/sonifier.py` in the background (`nohup`, detached) if nothing is already answering on `127.0.0.1:9753`; every other hook fires a UDP datagram at it. You can also start it by hand:
@@ -125,7 +128,7 @@ The daemon listens on `SONIFIER_PORT` (default `9753`) for both:
 
 ## Uninstall
 
-1. Remove the `hooks` entries that point at this project's `hooks/send-event.sh` / `hooks/autostart-daemon.sh` from `~/.claude/settings.json` (or restore one of the `settings.json.bak.<timestamp>` backups `install.sh` made).
+1. Remove the `hooks` entries that point at this project's `hooks/send-event.sh` / `hooks/autostart-daemon.sh` from wherever `install.sh` put them — `$CLAUDE_CONFIG_DIR/settings.json` (or `~/.claude/settings.json`) for a `--global` install, or this repo's own `.claude/settings.json` for a `--project` install (or restore one of the `settings.json.bak.<timestamp>` backups `install.sh` made).
 2. Kill the running daemon if it's still up: `pkill -f sonifier.py`, or let it exit on its own after `SONIFIER_IDLE_EXIT_MIN` minutes of silence.
 3. Delete this directory.
 
