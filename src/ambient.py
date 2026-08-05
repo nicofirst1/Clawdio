@@ -50,19 +50,7 @@ class AmbientTheme:
     generators are seeded from `seed` and called in a fixed, seed-only-
     dependent order).
 
-    # ponytail: that RNG split is the only thing actually guarded here.
-    # handle_event also directly reads/writes plain scalar fields (self.t,
-    # self.activity, fail_penalty_hz, easing_after_stop_until, etc.) that
-    # the audio callback thread reads/writes every block, with no lock.
-    # CPython's GIL makes each individual attribute get/set atomic, so this
-    # doesn't crash or corrupt memory, but multi-step read-modify-write
-    # sequences across those fields are NOT atomic (e.g. a note's delay
-    # computed from a self.t that changes mid-computation, or a lost
-    # `self.activity +=` under concurrent HTTP requests racing the audio
-    # thread). Ceiling: best-effort/GIL-only, not truly atomic. Upgrade path
-    # if this ever bites: a lock around the shared-scalar read/write
-    # sections in handle_event and render_block, accepting the audio-
-    # callback latency risk that a lock in that path implies.
+   
     """
 
     def __init__(self, sr=SAMPLE_RATE, volume=0.5, mute=False, clicks_enabled=True,

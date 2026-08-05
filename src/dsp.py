@@ -1,6 +1,5 @@
 """DSP: Slew, chime synthesis (render_*_chime, build_chime_bank), click
-grain synthesis. Split out of sonifier.py; see sonifier.py for the module
-overview."""
+grain synthesis. """
 
 from __future__ import annotations
 
