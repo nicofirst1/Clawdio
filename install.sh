@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — idempotent installer for claude-geiger (agent-sonifier).
+# install.sh — idempotent installer for Clawdio (formerly claude-geiger / agent-sonifier).
 #
 # What it does:
 #   1. Checks for python3 and numpy (required), notes sounddevice as

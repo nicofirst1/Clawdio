@@ -1,4 +1,4 @@
-# claude-geiger (agent-sonifier)
+# Clawdio (formerly claude-geiger / agent-sonifier)
 
 Generative ambient audio sonification for Claude Code sessions. Claude Code hook events (tool calls, subagents, failures, compaction, context pressure, ...) are piped over UDP/HTTP to a small local daemon (`src/sonifier.py`) that turns them into a soundscape, so you can hear roughly what an agent session is doing without watching the terminal. This is a research spike / prototype, not a polished product — expect rough edges.
 
