@@ -132,7 +132,7 @@ python3 src/simulate_session.py --speed 4    # fire a session at a running daemo
 ## Tests and tooling
 
 ```bash
-python3 -m pytest tests/ -q                        # 154 tests, deliberately lenient (no RNG flakiness)
+python3 -m pytest tests/ -q                        # 164 tests, deliberately lenient (no RNG flakiness)
 python3 tools/lab.py steady 60                     # render + strict metric battery
 python3 tools/analyze_render.py out.wav --arc      # PASS/FAIL vs BRIEF section-7 criteria
 python3 tools/complaint_checks.py out.wav \
