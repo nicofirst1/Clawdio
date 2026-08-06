@@ -10,7 +10,7 @@ Claudio is a local audio daemon. Claude Code hook events (tool calls, subagents,
 
 The sound layer is a swappable **theme** (`SONIFIER_THEME`; see [Themes](#themes)).
 
-Multiple Claude Code sessions can share one daemon: events blend into the same room, which only fades to silence once the last session ends. Per-session voicing (distinct pan/pitch) is planned, see `docs/research/BRIEF-v2.5.md`.
+Multiple Claude Code sessions can share one daemon: events blend into the same room, which only fades to silence once the last session ends, and each session's gestures get their own pan/pitch (`docs/research/BRIEF-v2.5.md`).
 
 ## Quickstart
 
@@ -130,7 +130,7 @@ python3 src/simulate_session.py --http       # over HTTP instead of UDP
 ## Tests and tooling
 
 ```bash
-python3 -m pytest tests/ -q                        # 126 tests, deliberately lenient (no RNG flakiness)
+python3 -m pytest tests/ -q                        # 134 tests, deliberately lenient (no RNG flakiness)
 python3 tools/lab.py steady 60                     # render + strict metric battery
 python3 tools/analyze_render.py out.wav --arc      # PASS/FAIL vs BRIEF section-7 criteria
 python3 tools/complaint_checks.py out.wav \
