@@ -1,4 +1,4 @@
-# claude-geiger — Functional Ambient Audio for AI Coding Agents
+# Clawdio: Functional Ambient Audio for AI Coding Agents
 
 **Project dossier: purpose, research record, design history, and current state** _Last updated: August 2026 · Status: v2.4 "State Legibility" shipped — v2.3 replaced the noise-tick drop with a woodblock timbre and halved event density; v2.4 fixed the Stop cadence and post-Stop idle so DONE reads as conclusive, not just "continues"_
 

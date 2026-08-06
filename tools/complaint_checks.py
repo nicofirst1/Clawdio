@@ -3,7 +3,7 @@
 # requires-python = ">=3.9"
 # dependencies = ["numpy", "scipy"]
 # ///
-"""complaint_checks.py -- listener-complaint regression suite for claude-geiger.
+"""complaint_checks.py -- listener-complaint regression suite for Clawdio.
 
 The v2 blind listener (earphones, no context) said, verbatim:
 

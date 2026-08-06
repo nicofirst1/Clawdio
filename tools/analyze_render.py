@@ -4,7 +4,7 @@
 # dependencies = ["numpy", "scipy"]
 # ///
 """analyze_render.py -- BRIEF-v2.md/BRIEF-v2.2.md section 7 acceptance battery
-+ listenability proxies for claude-geiger v2/v2.2 renders.
++ listenability proxies for Clawdio v2/v2.2 renders.
 
 v2.2 amends section 7 items 1, 2, 7 (spectral slope band + conformity,
 centroid floor+ceiling, stereo correlation + L-R balance) and adds items

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """simulate_session.py — replay a realistic Claude Code session's worth of
-hook events at the claude-geiger sonifier daemon, or dump them as an
+hook events at the Clawdio sonifier daemon, or dump them as an
 offline render script.
 
 Two modes:
