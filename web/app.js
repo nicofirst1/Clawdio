@@ -1,4 +1,4 @@
-/* Agent Sonifier control panel.
+/* Clawdio control panel.
    One declarative table maps config keys to controls; adding a knob later
    means one backend key + one entry here (+ markup). */
 
