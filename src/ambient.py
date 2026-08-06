@@ -16,12 +16,12 @@ from dsp import Slew, _mono_to_stereo, _limit_ms_ratio
 import geiger  # for the shared _RENDER_FAULT_REPORTED fault-suppression flag
 from ambient_layers import (
     _HAVE_SCIPY, _sp_signal,
-    AMBIENT_CONFIG, AMBIENT_DRY_GAIN, AMBIENT_MASTER_HEADROOM_DB,
-    AMBIENT_WET_GAIN, ACTIVITY_BUMP, ACTIVITY_MED_TAU, BED_CAL_DB,
-    DUCK_ATTACK_S, DUCK_DEPTH_DB, DUCK_HOLD_S, DUCK_RELEASE_S,
-    DUCK_SMOOTH_S, DUCK_TOTAL_S, KNOCK_EMBED_CAP_DB, MAX_PENDING_VOICES,
-    MS_MAX_SIDE_OVER_MID, NOTE_DIRECT_FRAC, NOTE_EMBED_CAP_DB,
-    NOTE_PAN_LIMIT, NOTE_REVERB_FRAC, ROOT_C2,
+    AMBIENT_CONFIG, AMBIENT_MASTER_HEADROOM_DB,
+    ACTIVITY_BUMP, ACTIVITY_MED_TAU,
+    DUCK_ATTACK_S, DUCK_HOLD_S, DUCK_RELEASE_S,
+    DUCK_SMOOTH_S, DUCK_TOTAL_S, MAX_PENDING_VOICES,
+    MS_MAX_SIDE_OVER_MID,
+    NOTE_PAN_LIMIT, ROOT_C2,
     BedLayer, BloomLayer, Freeverb, RainLayer, StemLayer, WeatherLayer,
     _build_cadence_notes, _build_cadence_notes_v24, _db_to_lin,
     _dc_blocker, _midi_hz, _mix_voices, _onepole_lp_coeffs,
@@ -123,12 +123,13 @@ class AmbientTheme:
         # identical to the pre-split single-__init__ sequence for
         # byte-identical renders under a fixed seed.
         self.bed = BedLayer(self._rng, self._apply_lp_stage, sr,
-                           done_cadence=self.cfg.done_cadence)
+                           done_cadence=self.cfg.done_cadence, cfg=self.cfg)
         self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled,
-                               drop_timbre=self.cfg.drop_timbre)
-        self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr)
-        self.stem = StemLayer(self._rng, self._apply_lp_stage, sr)
-        self.weather = WeatherLayer(sr)
+                               drop_timbre=self.cfg.drop_timbre, cfg=self.cfg)
+        self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr,
+                                 cfg=self.cfg)
+        self.stem = StemLayer(self._rng, self._apply_lp_stage, sr, cfg=self.cfg)
+        self.weather = WeatherLayer(sr, cfg=self.cfg)
 
         # L5 context-pressure weather (shared/master-bus state; see
         # WeatherLayer docstring for why fill/fail-penalty stay here)
@@ -254,10 +255,10 @@ class AmbientTheme:
             if self.gestures_enabled:
                 # v2.2 embedding rule: knock peak <= bed RMS + KNOCK_EMBED_CAP_DB,
                 # relative to the CURRENT calibrated bed reference (not a fixed trim).
-                bed_ref_db = self.bed.bed_level_db.value + BED_CAL_DB
+                bed_ref_db = self.bed.bed_level_db.value + self.cfg.BED_CAL_DB
                 knock = _render_knock(rng, velocity=0.75, sr=self.sr,
                                       pitch_factor=slot_pitch) * _db_to_lin(
-                    bed_ref_db + KNOCK_EMBED_CAP_DB)
+                    bed_ref_db + self.cfg.KNOCK_EMBED_CAP_DB)
                 direct = _mono_to_stereo((knock * 0.85).astype(np.float64), pan=slot_pan)
                 self._queue_voice({"buf": direct, "pos": 0, "bus": "direct"})
                 send = _mono_to_stereo((knock * 0.15).astype(np.float64), pan=slot_pan)
@@ -405,8 +406,14 @@ class AmbientTheme:
             _voice_pool_add(self.voices, voice, self.sr)
 
     def _spawn_note(self, rng, freq, velocity=0.4, bell=False, i_peak=None, pan=None,
-                    delay_s=0.0, gain_db=0.0, embed_cap_db=NOTE_EMBED_CAP_DB,
+                    delay_s=0.0, gain_db=0.0, embed_cap_db=None,
                     pitch_factor=1.0):
+        # embed_cap_db=None (not a whitelisted-constant default): a mutable
+        # module constant can't be bound at import time as a default arg and
+        # still read from self.cfg, so it's resolved here instead -- see the
+        # theme-packs plan's "special case" note.
+        if embed_cap_db is None:
+            embed_cap_db = self.cfg.NOTE_EMBED_CAP_DB
         # pitch_factor is the BRIEF-v2.5 per-session slot transpose. Slot 0
         # (and every non-gesture caller) passes 1.0, so `freq * 1.0 == freq`
         # bit-identically -- the single-session render stays byte-identical.
@@ -423,7 +430,7 @@ class AmbientTheme:
         # `gain_db` may only ever pull a note quieter than the cap, never
         # push it past -- that headroom is exactly what made the v2
         # Notification chime read as "a far-away bing under pressure".
-        bed_ref_db = self.bed.bed_level_db.value + BED_CAL_DB
+        bed_ref_db = self.bed.bed_level_db.value + self.cfg.BED_CAL_DB
         eff_cap_db = min(embed_cap_db, embed_cap_db + gain_db)
         sig = sig * _db_to_lin(bed_ref_db + eff_cap_db)
         stereo = _mono_to_stereo(sig.astype(np.float64), pan=pan)
@@ -434,8 +441,8 @@ class AmbientTheme:
         # note's full signal into the shared room (100% wet). Notes are now
         # mostly direct (embedded in the room, not floating above it) with a
         # reduced, secondary reverb send for spatial glue.
-        self._queue_voice({"buf": stereo * NOTE_DIRECT_FRAC, "pos": 0, "bus": "direct"})
-        self._queue_voice({"buf": stereo * NOTE_REVERB_FRAC, "pos": 0, "bus": "reverb"})
+        self._queue_voice({"buf": stereo * self.cfg.NOTE_DIRECT_FRAC, "pos": 0, "bus": "direct"})
+        self._queue_voice({"buf": stereo * self.cfg.NOTE_REVERB_FRAC, "pos": 0, "bus": "reverb"})
 
     def _spawn_note_sequence(self, rng, freqs, velocity=0.4, spacing=0.2, gain_db=0.0, pan=None,
                              pitch_factor=1.0):
@@ -503,9 +510,9 @@ class AmbientTheme:
             send = self._apply_master_bus_lp(send, "send", cutoff)
             air = self._apply_master_bus_lp(air, "air", cutoff)
             mono_in = 0.5 * (send[:, 0] + send[:, 1])
-            wet = self.reverb.process_block(mono_in) * AMBIENT_WET_GAIN
+            wet = self.reverb.process_block(mono_in) * self.cfg.AMBIENT_WET_GAIN
 
-            out = wet + (send + air) * AMBIENT_DRY_GAIN + direct_bus
+            out = wet + (send + air) * self.cfg.AMBIENT_DRY_GAIN + direct_bus
             sub = self.weather.render(n, dt, self.fill_smooth.value)
             out += sub * duck if duck is not None else sub
 
@@ -609,7 +616,7 @@ class AmbientTheme:
             g = np.ones(n)
         else:
             u = (self.t - self._duck_start_t) + np.arange(n) / self.sr
-            d = _db_to_lin(-DUCK_DEPTH_DB)
+            d = _db_to_lin(-self.cfg.DUCK_DEPTH_DB)
             g = np.ones(n)
             a = DUCK_ATTACK_S
             h = a + DUCK_HOLD_S

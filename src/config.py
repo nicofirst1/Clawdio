@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import tempfile
 import threading
 
@@ -155,6 +156,18 @@ def _norm_theme(v, default: str) -> str:
     return default
 
 
+_PACK_NAME_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _norm_pack(v, default: str) -> str:
+    if not isinstance(v, str):
+        return default
+    v = v.strip()
+    if v == "":
+        return v  # "" is a valid value: no pack, built-in sound
+    return v if _PACK_NAME_RE.fullmatch(v) else default
+
+
 # Single source of truth for the settable config surface: key -> normalizer.
 # Used by load_config (file merge), save_config, and the /config HTTP API.
 CONFIG_NORMALIZERS = {
@@ -167,6 +180,7 @@ CONFIG_NORMALIZERS = {
     "idle_exit_min": _norm_idle,
     "quiet": _norm_bool,
     "theme": _norm_theme,
+    "theme_pack": _norm_pack,
 }
 
 # Keys the live daemon can apply without a restart (mutated on the running
@@ -240,6 +254,7 @@ def load_config() -> dict:
         idle_exit_min=max(0.0, _env_float("SONIFIER_IDLE_EXIT_MIN", 30.0)),
         quiet=_env_bool_flag("SONIFIER_QUIET", False),
         theme=_env_theme("SONIFIER_THEME", THEME_AMBIENT),
+        theme_pack=_norm_pack(os.environ.get("SONIFIER_THEME_PACK", ""), ""),
     )
     for k, v in _read_config_file().items():
         norm = CONFIG_NORMALIZERS.get(k)

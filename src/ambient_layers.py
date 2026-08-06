@@ -144,12 +144,14 @@ SETTLED_BLOOM_RATE_SCALE = 0.35  # bloom's self-play rate is scaled by this whil
                                   # "very sparse", not silent
 
 
-def _drop_rate_from_activity(a):
+def _drop_rate_from_activity(a, scale=None):
     """Compressive (log) discrete-drop rate map, brief section 1:
     rate = R_min + (R_cap - R_min) * log(1 + 9a) / log(10), a in [0,1],
-    scaled by DROP_RATE_SCALE (v2.3 half-density: 0.5x)."""
+    scaled by `scale` (default DROP_RATE_SCALE; v2.3 half-density: 0.5x)."""
+    if scale is None:
+        scale = DROP_RATE_SCALE
     a = max(0.0, min(1.0, a))
-    return DROP_RATE_SCALE * (DROP_RATE_MIN + (DROP_RATE_CAP - DROP_RATE_MIN) * (
+    return scale * (DROP_RATE_MIN + (DROP_RATE_CAP - DROP_RATE_MIN) * (
         math.log(1.0 + 9.0 * a) / math.log(DROP_RATE_LOG_BASE)))
 
 
@@ -1067,7 +1069,8 @@ class StemLayer:
     _lp_zi filter-state dict (also used by BedLayer and the master bus) --
     a genuinely shared resource, passed in rather than duplicated."""
 
-    def __init__(self, rng, apply_lp_stage, sr):
+    def __init__(self, rng, apply_lp_stage, sr, cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self.apply_lp_stage = apply_lp_stage
         self.sr = sr
         self.subagent_refcount = 0
@@ -1096,9 +1099,9 @@ class StemLayer:
             frac = np.mod(ph0 + t[:, None] * freqs[None, :], 1.0)
             saw = np.sum(2.0 * frac - 1.0, axis=1) / len(freqs)
             self.stem_phase[0] = float(np.mod(ph0 + ROOT_C4 * n / self.sr, 1.0))
-            saw = self.apply_lp_stage(saw, "stem1_lp1", STEM_LP_HZ)
-            saw = self.apply_lp_stage(saw, "stem1_lp2", STEM_LP_HZ)
-            gain = _db_to_lin(-32.0 + STEM_CAL_DB) * self.stem1_gain.value
+            saw = self.apply_lp_stage(saw, "stem1_lp1", self.cfg.STEM_LP_HZ)
+            saw = self.apply_lp_stage(saw, "stem1_lp2", self.cfg.STEM_LP_HZ)
+            gain = _db_to_lin(-32.0 + self.cfg.STEM_CAL_DB) * self.stem1_gain.value
             pan = self.stem_pan
             stereo = _mono_to_stereo(saw.astype(np.float64), pan=pan)
             dry += stereo * gain
@@ -1107,7 +1110,7 @@ class StemLayer:
             phase = ph0 + ROOT_G2 * t / 1.0
             sig = np.sin(2 * np.pi * phase)
             self.stem_phase[1] = float(np.mod(ph0 + ROOT_G2 * n / self.sr, 1.0))
-            gain = _db_to_lin(-34.0 + STEM_CAL_DB) * self.stem2_gain.value
+            gain = _db_to_lin(-34.0 + self.cfg.STEM_CAL_DB) * self.stem2_gain.value
             stereo = _mono_to_stereo(sig.astype(np.float64), pan=-self.stem_pan)
             dry += stereo * gain
 
@@ -1177,7 +1180,8 @@ class WeatherLayer:
     touches non-weather buses), so those stay on AmbientTheme and this
     layer's fill_smooth value is passed in at render time."""
 
-    def __init__(self, sr):
+    def __init__(self, sr, cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self.sr = sr
         self.subbass_phase = 0.0
         self.subbass_gain = Slew(-80.0, tau=0.5)
@@ -1205,7 +1209,7 @@ class WeatherLayer:
         phase = self.subbass_phase + ROOT_C1 * t / 1.0
         sig = np.sin(2 * np.pi * phase) + 0.3 * np.sin(4 * np.pi * phase)
         self.subbass_phase = float(np.mod(self.subbass_phase + ROOT_C1 * n / self.sr, 1.0))
-        gain = _db_to_lin(self.subbass_gain.value + SUBBASS_CAL_DB)
+        gain = _db_to_lin(self.subbass_gain.value + self.cfg.SUBBASS_CAL_DB)
         out = np.zeros((n, 2))
         out[:, 0] = sig * gain
         out[:, 1] = sig * gain
@@ -1223,7 +1227,8 @@ class BedLayer:
     sub-layer (bed_level_db only) -- legitimate cross-layer READS of this
     layer's own public state, not a back-reference out of it."""
 
-    def __init__(self, rng, apply_lp_stage, sr, done_cadence="v24"):
+    def __init__(self, rng, apply_lp_stage, sr, done_cadence="v24", cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self._rng = rng
         self._apply_lp_stage = apply_lp_stage
         self.sr = sr
@@ -1293,7 +1298,7 @@ class BedLayer:
             # elsewhere, just delayed to t=SETTLED_HOLD_S post-Stop. Settled
             # now holds for as long as the agent stays idle since Stop, and
             # only exits when a genuinely new event advances last_event_t.
-            return SETTLED_BED_DB, SETTLED_BED_TAU_S
+            return self.cfg.SETTLED_BED_DB, self.cfg.SETTLED_BED_TAU_S
         since_start = t - (session_start_t or 0.0)
         idle_dur = t - last_event_t
         if since_start < 3.0:
@@ -1319,7 +1324,7 @@ class BedLayer:
         self.bed_level_db.step(dt)
 
         tv = np.arange(n) / sr
-        cutoff = max(150.0, min(BED_LP_MAX_HZ, BED_LP_BASE_HZ * (2.0 ** self.bed_cutoff_oct)))
+        cutoff = max(150.0, min(self.cfg.BED_LP_MAX_HZ, self.cfg.BED_LP_BASE_HZ * (2.0 ** self.bed_cutoff_oct)))
 
         # Root shading: PostToolUseFailure pulls the bed root C -> A (I -> vi,
         # BRIEF section 3 "the room got darker"), released on Stop / on the
@@ -1360,7 +1365,7 @@ class BedLayer:
             col = self._apply_lp_stage(col, key2, cutoff)
             bed_raw[:, ch] = col
 
-        gain = _db_to_lin(self.bed_level_db.value + self.bed_gain_db + BED_CAL_DB)
+        gain = _db_to_lin(self.bed_level_db.value + self.bed_gain_db + self.cfg.BED_CAL_DB)
         dry += bed_raw * gain
 
         # v2.2 brightness lift (section 2): a soft, independent C3+G3 mid
@@ -1380,8 +1385,8 @@ class BedLayer:
         self.midlayer_phase = np.mod(mph + (mid_freqs * n / sr)[:, None], 1.0)
         for ch in range(2):
             midlayer[:, ch] = self._apply_lp_stage(midlayer[:, ch], f"midlayer_lp_{ch}",
-                                                   MIDLAYER_LP_HZ)
-        mid_gain = _db_to_lin(self.bed_level_db.value + MIDLAYER_CAL_DB)
+                                                   self.cfg.MIDLAYER_LP_HZ)
+        mid_gain = _db_to_lin(self.bed_level_db.value + self.cfg.MIDLAYER_CAL_DB)
         dry += midlayer * mid_gain
 
     def _shimmer_ratios(self, dt, fill_smooth_value, t):
@@ -1443,7 +1448,8 @@ class RainLayer:
     passing its own _ingress_rng) and monkeypatched directly by the test
     suite."""
 
-    def __init__(self, rng, queue_voice, sr, rain_enabled, drop_timbre="woodblock"):
+    def __init__(self, rng, queue_voice, sr, rain_enabled, drop_timbre="woodblock", cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self._rng = rng
         self._queue_voice = queue_voice
         self.sr = sr
@@ -1477,13 +1483,13 @@ class RainLayer:
 
         # L1b air state
         self.air_gain_db = Slew(-80.0, tau=1.5)
-        self.air_cut_hz = Slew(AIR_TILT_HI_IDLE_HZ, tau=2.5)
+        self.air_cut_hz = Slew(self.cfg.AIR_TILT_HI_IDLE_HZ, tau=2.5)
         self._air_zi = {}
         if _HAVE_SCIPY:
             self._air_hp = _sp_signal.butter(2, AIR_HP_HZ / (sr / 2.0), btype="high")
         else:  # pragma: no cover
             self._air_hp = ([1.0], [1.0])
-        self._air_norm = _air_norm_factor(sr, AIR_TILT_HI_IDLE_HZ, self._air_hp)
+        self._air_norm = _air_norm_factor(sr, self.cfg.AIR_TILT_HI_IDLE_HZ, self._air_hp)
 
     def spawn_one_drop(self, rng, cls, fill_smooth_value, extra_gain_db=0.0):
         """Render and queue exactly one drop voice (the coalesced unit --
@@ -1503,8 +1509,8 @@ class RainLayer:
             pitch_mult, gain_db = 1.3, -2.0
         elif cls == CLASS_EXEC:
             pitch_mult = 0.7
-        amp_db = rng.uniform(-DROP_AMP_SPREAD_DB, DROP_AMP_SPREAD_DB)
-        gain = _db_to_lin(gain_db + amp_db + extra_gain_db + DROP_CAL_DB)
+        amp_db = rng.uniform(-self.cfg.DROP_AMP_SPREAD_DB, self.cfg.DROP_AMP_SPREAD_DB)
+        gain = _db_to_lin(gain_db + amp_db + extra_gain_db + self.cfg.DROP_CAL_DB)
         n = len(base)
         if abs(pitch_mult - 1.0) > 1e-6 and n > 4:
             new_n = max(4, int(n / pitch_mult))
@@ -1529,7 +1535,7 @@ class RainLayer:
         floor are silently absorbed rather than spawned -- this, combined
         with the compressive rate map, is what keeps N1 (never >7 onsets/s)
         satisfied even under an a=1.0 flood."""
-        if t - self._last_any_onset_t < DROP_MIN_GAP_S:
+        if t - self._last_any_onset_t < self.cfg.DROP_MIN_GAP_S:
             return False
         self.spawn_one_drop(rng, cls, fill_smooth_value, extra_gain_db=extra_gain_db)
         self._last_any_onset_t = t
@@ -1539,7 +1545,7 @@ class RainLayer:
         """Per-tool-event "instant twitch" drop trigger (handle_event side).
         Brief-v2.2 section 1 burst coalescing: events arriving < 250 ms apart
         merge into ONE weighted drop instead of stacking one drop per event."""
-        if t - self._last_event_onset_t < BURST_COALESCE_WINDOW_S:
+        if t - self._last_event_onset_t < self.cfg.BURST_COALESCE_WINDOW_S:
             self._event_coalesce_bonus_db = min(
                 BURST_COALESCE_MAX_DB, self._event_coalesce_bonus_db + BURST_COALESCE_STEP_DB)
             return
@@ -1570,7 +1576,7 @@ class RainLayer:
         # hysteresis so a burst can't lurch the texture.
         a_raw = max(0.0, activity)   # unclamped: can exceed 1 under a flood
         a = min(1.0, a_raw)
-        raw_rate = _drop_rate_from_activity(a)
+        raw_rate = _drop_rate_from_activity(a, scale=self.cfg.DROP_RATE_SCALE)
         if abs(raw_rate - self.rain_rate.target) > RATE_HYSTERESIS:
             self.rain_rate.target = raw_rate
         self.rain_rate.step(dt)
@@ -1612,7 +1618,7 @@ class RainLayer:
             noise = self._rng.standard_normal(n)
             filtered, zf = _sp_signal.lfilter(b, a_, noise, zi=zi)
             self._whoosh_zi = zf
-            gain = _db_to_lin(-34.0 + WHOOSH_CAL_DB) * self.whoosh_gain.value
+            gain = _db_to_lin(-34.0 + self.cfg.WHOOSH_CAL_DB) * self.whoosh_gain.value
             dry[:, 0] += filtered * gain
             dry[:, 1] += filtered * gain
 
@@ -1666,14 +1672,14 @@ class RainLayer:
         # decision + lit-review rec #4 -- the continuous noise bed was the
         # dominant contributor to the "white noise/chaos" blind-round-2
         # complaint, corroborated by round-3's isolated control clip).
-        floor_db = bed_level_db_value + AIR_FLOOR_OFFSET_DB + AIR_V23_LEVEL_CUT_DB
-        self.air_gain_db.target = floor_db + AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
+        floor_db = bed_level_db_value + self.cfg.AIR_FLOOR_OFFSET_DB + self.cfg.AIR_V23_LEVEL_CUT_DB
+        self.air_gain_db.target = floor_db + self.cfg.AIR_ACTIVITY_RANGE_DB * (a ** 0.7) + (
             AIR_WASH_BOOST_RANGE_DB * wash_boost)
         self.air_gain_db.step(dt)
         # "gloom": a failure also dims the bed's own top end, which is where
         # most of this mix's 2-6 kHz energy lives. The master one-pole alone
         # could not deliver an audible darkening.
-        gloom = 1.0 - AIR_GLOOM_DEPTH * min(1.0, fail_penalty_slew_value / 2400.0)
+        gloom = 1.0 - self.cfg.AIR_GLOOM_DEPTH * min(1.0, fail_penalty_slew_value / 2400.0)
         # v2.3: hard ceiling on top of the existing activity-adaptive tilt --
         # "hard-lowpass ... the continuous air bed" per the round-2 decision.
         # Applied as a min() rather than lowering AIR_TILT_HI_ACTIVE_HZ itself
@@ -1681,8 +1687,8 @@ class RainLayer:
         # ceiling) is untouched and the section 7 centroid floor (>=350Hz)
         # tuning above isn't disturbed -- only the busiest, brightest end of
         # the activity range is clipped.
-        self.air_cut_hz.target = min(AIR_V23_HARD_CEILING_HZ, (AIR_TILT_HI_IDLE_HZ + (
-            AIR_TILT_HI_ACTIVE_HZ - AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
+        self.air_cut_hz.target = min(self.cfg.AIR_V23_HARD_CEILING_HZ, (self.cfg.AIR_TILT_HI_IDLE_HZ + (
+            self.cfg.AIR_TILT_HI_ACTIVE_HZ - self.cfg.AIR_TILT_HI_IDLE_HZ) * (a ** 0.7)
             + AIR_WASH_BOOST_HZ * wash_boost) * gloom)
         self.air_cut_hz.step(dt)
         if self.air_gain_db.value < -70.0:
@@ -1694,7 +1700,7 @@ class RainLayer:
         x = self.air_stage(x, "hi", *_onepole_lp_coeffs(self.air_cut_hz.value, self.sr), 3)
         b_hp, a_hp = self._air_hp
         x = self.air_stage(x, "hp", b_hp, a_hp, 3)
-        gain = _db_to_lin(self.air_gain_db.value + AIR_CAL_DB) * self._air_norm
+        gain = _db_to_lin(self.air_gain_db.value + self.cfg.AIR_CAL_DB) * self._air_norm
         out = np.empty((n, 2))
         out[:, 0] = (x[:, 0] + AIR_DECORR * x[:, 1]) * gain
         out[:, 1] = (x[:, 0] + AIR_DECORR * x[:, 2]) * gain
@@ -1746,7 +1752,8 @@ class BloomLayer:
     passed in at construction, in the same call-order position render_block
     always called the bloom scheduler from."""
 
-    def __init__(self, rng, spawn_note, note_refractory, sr):
+    def __init__(self, rng, spawn_note, note_refractory, sr, cfg=None):
+        self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self._rng = rng
         self._spawn_note = spawn_note
         self._note_refractory = note_refractory
@@ -1770,7 +1777,7 @@ class BloomLayer:
         # idle-during-work -- one of the two audible legs of the DONE state
         # (the other is BedLayer's deeper settled bed dip).
         if settled:
-            rate *= SETTLED_BLOOM_RATE_SCALE
+            rate *= self.cfg.SETTLED_BLOOM_RATE_SCALE
         rate = max(rate, 1e-4)
 
         block_dur = n / self.sr
@@ -1824,7 +1831,7 @@ class BloomLayer:
         # v2.2 section 3: "delete r=3.5 bell from routine flow" -- the bell
         # voice is now ONLY used for the Notification/PermissionRequest
         # gesture (handle_event), never from self-play.
-        embed_cap = NOTE_EMBED_CAP_IDLE_DB if idle_mode else NOTE_EMBED_CAP_DB
+        embed_cap = self.cfg.NOTE_EMBED_CAP_IDLE_DB if idle_mode else self.cfg.NOTE_EMBED_CAP_DB
         self._spawn_note(rng, freq, velocity=velocity, bell=False, embed_cap_db=embed_cap)
         self._note_refractory[midi] = t
         self.last_note_t = t

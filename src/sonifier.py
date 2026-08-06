@@ -114,6 +114,7 @@ from ambient_layers import (  # noqa: E402,F401
     StemLayer, WeatherLayer, BedLayer, RainLayer, BloomLayer,
 )
 from ambient import AmbientTheme  # noqa: E402,F401
+from themes import PACK_SCHEMA, list_packs, load_pack  # noqa: E402,F401
 from io_modes import (  # noqa: E402,F401
     _build_theme_state, run_render, _write_wav,
     _EventHTTPHandler, _make_http_server, _udp_recv_loop, run_live, run_check,

@@ -4,6 +4,7 @@ Split out of sonifier.py; see sonifier.py for the module overview."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 import os
@@ -29,6 +30,8 @@ from config import (
 )
 from geiger import GeigerTheme, render_block
 from ambient import AmbientTheme
+from ambient_layers import AMBIENT_CONFIG
+import themes
 from logging_setup import get_logger
 
 log = get_logger("sonifier")
@@ -49,6 +52,11 @@ def _build_theme_state(cfg, seed):
     )
     if cfg["theme"] == THEME_GEIGER:
         return GeigerTheme(**kwargs)
+    pack = cfg.get("theme_pack")
+    if pack:
+        overrides = themes.load_pack(pack)
+        if overrides:
+            kwargs["cfg"] = dataclasses.replace(AMBIENT_CONFIG, **overrides)
     return AmbientTheme(**kwargs)
 
 
@@ -291,6 +299,7 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
                 "live_keys": sorted(LIVE_KEYS),
                 "restart_keys": sorted(set(CONFIG_NORMALIZERS) - LIVE_KEYS),
                 "pending_restart": self._pending_restart(cfg),
+                "packs": themes.list_packs(),
                 "version": VERSION,
             })
             return
@@ -460,6 +469,7 @@ def run_check():
     result["version"] = VERSION
     result["sample_rate"] = SAMPLE_RATE
     result["blocksize"] = BLOCKSIZE
+    result["packs"] = themes.list_packs()
     result["sounddevice_importable"] = sd is not None
     device_ok = False
     device_error = None
