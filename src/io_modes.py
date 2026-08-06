@@ -358,6 +358,21 @@ def _udp_recv_loop(state, port, stop_event):
     sock.close()
 
 
+def _should_idle_exit(state, idle_exit_s: float) -> bool:
+    """True when run_live's poll loop should exit for idleness: no event
+    for longer than idle_exit_s AND the SessionTracker considers zero
+    sessions live. A tracked-live session pins the daemon open even
+    through a long quiet stretch inside it (multi-session design intent,
+    see SessionTracker's docstring); genuine all-idle -- nothing ever
+    connected, or every session's SESSION_EXPIRY_S window lapsed -- still
+    exits on schedule, since live_count() is 0 in that case too."""
+    if state.sessions.live_count(state.t) != 0:
+        return False
+    if state.last_event_t > 0:
+        return state.t - state.last_event_t > idle_exit_s
+    return state.t > idle_exit_s
+
+
 def run_live():
     # Detach from the launching terminal's session/process group. The
     # autostart hook backgrounds us with nohup (blocks SIGHUP) but when the
@@ -436,10 +451,7 @@ def run_live():
                 if restart_event.is_set():
                     log.info("restart requested via /restart")
                     break
-                if state.t - state.last_event_t > idle_exit_s and state.last_event_t > 0:
-                    log.info("idle timeout reached, exiting")
-                    break
-                if state.last_event_t == 0.0 and state.t > idle_exit_s:
+                if _should_idle_exit(state, idle_exit_s):
                     log.info("idle timeout reached, exiting")
                     break
     except KeyboardInterrupt:
