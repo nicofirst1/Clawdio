@@ -26,6 +26,7 @@ const CONTROLS = {
     read: () => $("mute").getAttribute("aria-pressed") === "true",
     write: (v) => $("mute").setAttribute("aria-pressed", String(v)),
   },
+  theme_pack: { read: () => $("theme_pack").value, write: (v) => { $("theme_pack").value = v; } },
   clicks: { read: () => $("clicks").checked, write: (v) => { $("clicks").checked = v; } },
   chimes: { read: () => $("chimes").checked, write: (v) => { $("chimes").checked = v; } },
   drone: { read: () => $("drone").checked, write: (v) => { $("drone").checked = v; } },
@@ -49,6 +50,10 @@ function relabelVoices(theme) {
   // Drone is a GeigerTheme-only voice (AmbientTheme.render_block never reads
   // drone_enabled); hide the control rather than let it toggle a no-op.
   $("drone").closest(".switch").hidden = theme !== "geiger";
+  // Packs are an AmbientTheme-only concept (presets over AmbientConfig).
+  // ponytail: .field has no `[hidden]` CSS rule (unlike .switch/.banner), so
+  // the hidden attribute alone wouldn't hide it here; toggle display inline.
+  $("theme_pack_row").style.display = theme === "geiger" ? "none" : "";
 }
 
 function showBanner(pending) {
@@ -117,6 +122,18 @@ async function restart() {
 async function load() {
   const res = await fetch("/config");
   const data = await res.json();
+
+  const packSel = $("theme_pack");
+  packSel.innerHTML = "";
+  const names = ["", ...(data.packs ?? [])];
+  for (const name of names) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name || "default";
+    packSel.appendChild(opt);
+  }
+  if (!names.includes(data.config.theme_pack)) data.config.theme_pack = "";
+
   for (const [key, value] of Object.entries(data.config)) {
     CONTROLS[key]?.write(value);
   }
@@ -147,7 +164,7 @@ function wire() {
     push({ mute: next });
   });
 
-  for (const key of ["clicks", "chimes", "drone", "quiet"]) {
+  for (const key of ["clicks", "chimes", "drone", "quiet", "theme_pack"]) {
     $(key).addEventListener("change", () => push({ [key]: CONTROLS[key].read() }));
   }
   for (const key of ["idle_exit_min", "port"]) {
