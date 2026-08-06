@@ -73,35 +73,37 @@ Each step: a command, a success signal.
 
 Binds `0.0.0.0:SONIFIER_PORT` (9753), HTTP and UDP.
 
-| Endpoint        | Scope         | What it does                                           |
-| --------------- | ------------- | ------------------------------------------------------ |
-| `POST /event`   | LAN-open      | Raw hook JSON, always `200`, bad JSON dropped.         |
-| UDP datagram    | LAN-open      | Same JSON, same port; used by `send-event.sh`.         |
-| `GET /health`   | LAN-open      | `{"ok": true, "activity": <float>}`                    |
-| `GET /config`   | loopback only | Current config, which keys need a restart.             |
-| `POST /config`  | loopback only | Merge config keys; live ones apply at once.            |
-| `POST /restart` | loopback only | Re-exec in place; picks up code edits.                 |
-| `GET /`         | loopback only | Web control panel at `http://127.0.0.1:9753/`.         |
+| Endpoint        | Scope         | What it does                                   |
+| --------------- | ------------- | ---------------------------------------------- |
+| `POST /event`   | LAN-open      | Raw hook JSON, always `200`, bad JSON dropped. |
+| UDP datagram    | LAN-open      | Same JSON, same port; used by `send-event.sh`. |
+| `GET /health`   | LAN-open      | `{"ok": true, "activity": <float>}`            |
+| `GET /config`   | loopback only | Current config, which keys need a restart.     |
+| `POST /config`  | loopback only | Merge config keys; live ones apply at once.    |
+| `POST /restart` | loopback only | Re-exec in place; picks up code edits.         |
+| `GET /`         | loopback only | Web control panel at `http://127.0.0.1:9753/`. |
+
+![Claudio control panel](assets/panel.png)
 
 ## Config
 
 Every knob is an env var; a config file (written by the web panel) **overrides** it.
 
-| Var                      | Default                         | Meaning                                       |
-| ------------------------ | -------------------------------- | ----------------------------------------------- |
-| `SONIFIER_THEME`         | `ambient`                       | `ambient` (v2) or `geiger` (legacy v1)        |
-| `SONIFIER_PORT`          | `9753`                          | UDP/HTTP listen port                          |
-| `SONIFIER_VOLUME`        | `0.5`                           | master volume 0.0-1.0                         |
-| `SONIFIER_MUTE`          | off                             | mute output, daemon keeps running             |
-| `SONIFIER_IDLE_EXIT_MIN` | `30`                            | minutes of silence before daemon exits        |
-| `SONIFIER_CLICKS`        | on                              | `geiger` click train / `ambient` rain layer   |
+| Var                      | Default                         | Meaning                                             |
+| ------------------------ | ------------------------------- | --------------------------------------------------- |
+| `SONIFIER_THEME`         | `ambient`                       | `ambient` (v2) or `geiger` (legacy v1)              |
+| `SONIFIER_PORT`          | `9753`                          | UDP/HTTP listen port                                |
+| `SONIFIER_VOLUME`        | `0.5`                           | master volume 0.0-1.0                               |
+| `SONIFIER_MUTE`          | off                             | mute output, daemon keeps running                   |
+| `SONIFIER_IDLE_EXIT_MIN` | `30`                            | minutes of silence before daemon exits              |
+| `SONIFIER_CLICKS`        | on                              | `geiger` click train / `ambient` rain layer         |
 | `SONIFIER_CHIMES`        | on                              | `geiger` chimes / `ambient` knock-cadence-chime-ack |
-| `SONIFIER_DRONE`         | off                             | `geiger` pressure drone; unused in `ambient`  |
-| `SONIFIER_QUIET`         | off                             | suppress per-event stderr logging             |
-| `SONIFIER_LOG_DIR`       | `$TMPDIR` or `/tmp`             | where autostart writes `sonifier.log`         |
-| `SONIFIER_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                      |
-| `SONIFIER_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)            |
-| `SONIFIER_CONFIG`        | `~/.config/claudio/config.json` | override config file path                     |
+| `SONIFIER_DRONE`         | off                             | `geiger` pressure drone; unused in `ambient`        |
+| `SONIFIER_QUIET`         | off                             | suppress per-event stderr logging                   |
+| `SONIFIER_LOG_DIR`       | `$TMPDIR` or `/tmp`             | where autostart writes `sonifier.log`               |
+| `SONIFIER_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                            |
+| `SONIFIER_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)                  |
+| `SONIFIER_CONFIG`        | `~/.config/claudio/config.json` | override config file path                           |
 
 Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 

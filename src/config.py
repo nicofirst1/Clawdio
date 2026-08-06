@@ -13,7 +13,7 @@ import threading
 # Constants
 # --------------------------------------------------------------------------
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 SAMPLE_RATE = 48000
 BLOCKSIZE = 256
