@@ -1,0 +1,55 @@
+name: Bug report
+description: Something crashed, refused to start, or behaved wrong (not a sound-quality complaint).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Clawdio version
+      description: panel footer or `python3 src/sonifier.py --check`
+      placeholder: "2.4.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15.1 / Ubuntu 24.04 / ..."
+    validations:
+      required: true
+  - type: input
+    id: python_version
+    attributes:
+      label: Python version
+      description: output of `python3 --version`
+      placeholder: "Python 3.12.3"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: check_output
+    attributes:
+      label: Output of `python3 src/sonifier.py --check`
+      render: json
+    validations:
+      required: false
+  - type: textarea
+    id: log_excerpt
+    attributes:
+      label: Log excerpt
+      description: relevant lines from `${TMPDIR:-/tmp}/sonifier.log`
+      render: shell
+    validations:
+      required: false

@@ -121,6 +121,7 @@ async function load() {
     CONTROLS[key]?.write(value);
   }
   $("cfgpath").textContent = `cfg ${data.config_path}`;
+  $("version").textContent = data.version ? `v${data.version}` : "";
   showBanner(data.pending_restart);
   setStatus(true, "online");
 }

@@ -1,5 +1,7 @@
 # Clawdio
 
+[![CI](https://github.com/nicofirst1/Clawdio/actions/workflows/ci.yml/badge.svg)](https://github.com/nicofirst1/Clawdio/actions/workflows/ci.yml)
+
 _Hear what a Claude Code session is doing without watching the terminal._
 
 ---
@@ -192,3 +194,11 @@ pkill -f sonifier.py    # or let it exit after SONIFIER_IDLE_EXIT_MIN minutes of
 - **No sound**: live playback needs `sounddevice` and a working PortAudio output device. Offline `--render` never needs it.
 - **Port busy**: another process is on 9753. Kill it, or run daemon and hooks with `SONIFIER_PORT=9800` (export it before Claude Code launches hooks so `send-event.sh` picks it up too).
 - **Hooks fire but nothing happens**: check `${TMPDIR:-/tmp}/sonifier.log`, or run `python3 src/sonifier.py --check`.
+
+## Feedback
+
+Two issue forms cover the two kinds of report. [Listening feedback](../../issues/new?template=listening-feedback.yml) is for how a sound reads: what you heard, what you expected, and how annoying it was. [Bug report](../../issues/new?template=bug-report.yml) is for crashes and wrong behavior. Both ask for the Clawdio version, which you can read from the web panel's footer or `python3 src/sonifier.py --check`.
+
+## License
+
+[MIT](LICENSE).

@@ -13,6 +13,8 @@ import threading
 # Constants
 # --------------------------------------------------------------------------
 
+VERSION = "2.4.0"
+
 SAMPLE_RATE = 48000
 BLOCKSIZE = 256
 TAU_ACTIVITY = 3.0  # seconds, leaky integrator time constant

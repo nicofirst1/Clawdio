@@ -25,7 +25,7 @@ except Exception as exc:  # pragma: no cover - environment dependent
 
 from config import (
     SAMPLE_RATE, BLOCKSIZE, MAX_BODY_BYTES, HTTP_READ_TIMEOUT, THEME_GEIGER,
-    load_config, save_config, config_path, CONFIG_NORMALIZERS, LIVE_KEYS,
+    VERSION, load_config, save_config, config_path, CONFIG_NORMALIZERS, LIVE_KEYS,
 )
 from geiger import GeigerTheme, render_block
 from ambient import AmbientTheme
@@ -274,7 +274,11 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._send_json({"ok": True, "activity": float(self.state.activity)})
+            self._send_json({
+                "ok": True,
+                "activity": float(self.state.activity),
+                "version": VERSION,
+            })
             return
         if self.path == "/config":
             if not self._is_local():
@@ -287,6 +291,7 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
                 "live_keys": sorted(LIVE_KEYS),
                 "restart_keys": sorted(set(CONFIG_NORMALIZERS) - LIVE_KEYS),
                 "pending_restart": self._pending_restart(cfg),
+                "version": VERSION,
             })
             return
         static = _STATIC_FILES.get(self.path)
@@ -452,6 +457,7 @@ def run_live():
 def run_check():
     cfg = load_config()
     result = dict(cfg)
+    result["version"] = VERSION
     result["sample_rate"] = SAMPLE_RATE
     result["blocksize"] = BLOCKSIZE
     result["sounddevice_importable"] = sd is not None

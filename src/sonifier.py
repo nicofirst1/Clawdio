@@ -49,6 +49,7 @@ log = get_logger("sonifier")
 # --------------------------------------------------------------------------
 
 from config import (  # noqa: E402,F401
+    VERSION,
     SAMPLE_RATE, BLOCKSIZE, TAU_ACTIVITY, SLEW_TAU, MAX_CLICK_RATE,
     MAX_BODY_BYTES, MAX_ACTIVE_CHIMES, HTTP_READ_TIMEOUT,
     CLASS_READ, CLASS_WRITE, CLASS_EXEC, TOOL_CLASS,

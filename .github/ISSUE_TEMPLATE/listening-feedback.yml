@@ -1,0 +1,81 @@
+name: Listening feedback
+description: Tell us what a Clawdio sound made you think was happening, and whether it was right.
+title: "[feedback] "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the main way to report how Clawdio sounds, not just whether it works. There are no right or wrong answers here, we want your honest read of the sound.
+  - type: input
+    id: version
+    attributes:
+      label: Clawdio version
+      description: panel footer or `python3 src/sonifier.py --check`
+      placeholder: "2.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Theme
+      options:
+        - ambient
+        - geiger
+    validations:
+      required: true
+  - type: dropdown
+    id: context
+    attributes:
+      label: Context
+      description: How were you listening?
+      options:
+        - live session
+        - rendered clip
+        - demo mp3
+    validations:
+      required: true
+  - type: textarea
+    id: heard
+    attributes:
+      label: What you heard
+      description: Describe the sound and what it made you think was happening in the session.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What was actually happening, or what you think the sound should have been.
+    validations:
+      required: true
+  - type: dropdown
+    id: annoyance
+    attributes:
+      label: Annoyance
+      description: How bothered, disturbed, or annoyed did the sound make you feel?
+      options:
+        - "1 - not at all"
+        - "2 - slightly"
+        - "3 - moderately"
+        - "4 - very"
+        - "5 - extremely"
+    validations:
+      required: true
+  - type: dropdown
+    id: listened_for
+    attributes:
+      label: How long you've listened to Clawdio
+      options:
+        - first session
+        - hours
+        - days or more
+    validations:
+      required: true
+  - type: checkboxes
+    id: attachment
+    attributes:
+      label: Attachment
+      options:
+        - label: I can attach a .wav/.mp3 clip (drag it into this issue) or the `--render` command that reproduces it.
+          required: false

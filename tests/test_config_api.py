@@ -102,6 +102,7 @@ def test_get_config_reports_keys(server):
     assert "volume" in data["live_keys"]
     assert "theme" in data["restart_keys"]
     assert data["pending_restart"] is False
+    assert data["version"] == config.VERSION
 
 
 def test_post_config_applies_live_and_persists(server, cfg_file):
