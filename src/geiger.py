@@ -13,7 +13,7 @@ from config import (
     SAMPLE_RATE, BLOCKSIZE, TAU_ACTIVITY, MAX_CLICK_RATE, MAX_ACTIVE_CHIMES,
     CLASS_READ, TIMBRE,
 )
-from classify import classify, SessionTracker
+from classify import classify, SessionTracker, SubagentPresenceTracker, SUBAGENT_PRESENCE_DECAY_S
 from dsp import Slew, build_chime_bank, _mono_to_stereo, _make_click_grain
 from logging_setup import get_logger
 
@@ -51,6 +51,9 @@ class EngineState:
     time_to_next_click_sub: float = 0.05
 
     subagent_refcount: int = 0
+    subagent_presence: SubagentPresenceTracker = field(
+        default_factory=SubagentPresenceTracker, repr=False
+    )
 
     # drone
     drone_x: float = 0.0
@@ -99,6 +102,15 @@ class EngineState:
         if name != "SessionEnd":
             self.sessions.note(session_id, self.t)
 
+        agent_id = ev.get("agent_id")
+        if agent_id:
+            self.subagent_presence.note(agent_id, self.t)
+        else:
+            # No agent_id on this event, but still re-evaluate presence/decay
+            # so a fade-out happens on schedule instead of only on the next
+            # tagged event (mirrors ambient.py's recheck_presence wiring).
+            self.subagent_presence.active_count(self.t)
+
         if name == "PreToolUse":
             cls = classify(tool_name, tool_input)
             if cls is not None:
@@ -121,6 +133,7 @@ class EngineState:
             self._play_chime("spawn")
         elif name == "SubagentStop":
             self.subagent_refcount = max(0, self.subagent_refcount - 1)
+            self.subagent_presence.drop(ev.get("agent_id"))
             self._play_chime("despawn")
         elif name == "PreCompact":
             self._play_chime("compact")
@@ -340,7 +353,8 @@ def render_block(state, n=BLOCKSIZE) -> np.ndarray:
 
 def _current_click_rates(state):
     base_rate = _click_rate_from_activity(state.activity)
-    if state.subagent_refcount > 0:
+    active_count = max(state.subagent_presence.active_count(state.t), state.subagent_refcount)
+    if active_count > 0:
         # split budget between main + subagent register, cap combined.
         sub_rate = base_rate * 0.6
     else:
