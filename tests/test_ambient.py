@@ -1447,3 +1447,120 @@ def test_v22_ms_clamp_does_not_mono_collapse_or_zipper():
     assert excess_db < 6.0, (
         f"side-channel envelope has a {excess_db:.1f} dB line at the {block_rate:.0f} Hz "
         f"block rate -- the M/S clamp is zippering")
+
+
+# --------------------------------------------------------------------------
+# multi-session refcounting
+# --------------------------------------------------------------------------
+
+def _tool_events(session_id, t0, t1, step=1.0):
+    """PreToolUse/PostToolUse pairs for one session, keeping it "active"
+    across [t0, t1)."""
+    evs = []
+    t = t0
+    while t < t1:
+        evs.append((t, {"hook_event_name": "PreToolUse", "session_id": session_id,
+                        "tool_name": "Read", "tool_input": {"file_path": "x"}}))
+        evs.append((t + 0.3, {"hook_event_name": "PostToolUse", "session_id": session_id,
+                              "tool_name": "Read", "tool_input": {"file_path": "x"}}))
+        t += step
+    return evs
+
+
+def test_session_end_does_not_silence_mix_while_other_session_live():
+    """Two interleaved sessions: A ends at t=30 while B keeps working. The
+    mix a few seconds after A's SessionEnd must NOT be faded toward silence
+    -- only B's own SessionEnd (at the very end) may do that."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart", "session_id": "A"}),
+        (0.1, {"hook_event_name": "SessionStart", "session_id": "B"}),
+    ]
+    events += _tool_events("A", 1.0, 30.0)
+    events += _tool_events("B", 1.0, 45.0)
+    events.append((30.0, {"hook_event_name": "SessionEnd", "session_id": "A"}))
+    events.append((45.0, {"hook_event_name": "SessionEnd", "session_id": "B"}))
+
+    audio, state = render_events(events, duration_s=52.0, seed=11)
+
+    before = window_rms(audio, center_s=27.0, half_width_s=1.5)
+    after_a_end = window_rms(audio, center_s=36.0, half_width_s=1.5)
+    assert after_a_end > 0.3 * before, (
+        f"mix RMS dropped from {before:.4f} to {after_a_end:.4f} after A's SessionEnd "
+        "while B was still live -- shared state got silenced")
+
+    # B's own SessionEnd is the last event and no session remains live: this
+    # must fade to true digital silence exactly like the single-session case.
+    tail = audio[int(50.0 * SR):]
+    assert np.max(np.abs(tail)) == 0.0, "tail after the LAST session's SessionEnd must be true silence"
+
+
+def test_second_session_start_does_not_refade_a_playing_mix():
+    """A is live and playing; B's SessionStart (a second window opening)
+    must not duck/re-fade the mix -- only the very first SessionStart may
+    reset the fade-in envelope."""
+    events = [(0.0, {"hook_event_name": "SessionStart", "session_id": "A"})]
+    events += _tool_events("A", 1.0, 20.0)
+    events.append((10.0, {"hook_event_name": "SessionStart", "session_id": "B"}))
+
+    audio, state = render_events(events, duration_s=20.0, seed=12)
+    before = window_rms(audio, center_s=9.5, half_width_s=1.0)
+    after = window_rms(audio, center_s=10.5, half_width_s=1.0)
+    assert after > 0.3 * before, (
+        f"mix RMS dropped from {before:.4f} to {after:.4f} across B's SessionStart -- "
+        "a second window opening re-faded a playing soundscape")
+
+
+def test_anonymous_session_end_behaves_like_today_when_alone():
+    """No session_id anywhere (old demos / hand-crafted curls): SessionEnd
+    must fall back to exactly today's global fade+zero behavior."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart"}),
+        (1.0, {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {}}),
+        (2.0, {"hook_event_name": "SessionEnd"}),
+    ]
+    audio, state = render_events(events, duration_s=12.0, seed=13)
+    tail = audio[int(8.0 * SR):]
+    assert np.max(np.abs(tail)) == 0.0, "anonymous-only SessionEnd must still fully silence"
+
+
+def test_anonymous_session_end_skips_silencing_when_tracked_session_live():
+    """An anonymous SessionEnd arriving while a tracked session is live must
+    be treated like a non-last tracked SessionEnd: skip the silencing."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart", "session_id": "A"}),
+    ]
+    events += _tool_events("A", 1.0, 20.0)
+    events.append((10.0, {"hook_event_name": "SessionEnd"}))  # anonymous, A still live
+
+    audio, state = render_events(events, duration_s=20.0, seed=14)
+    before = window_rms(audio, center_s=9.0, half_width_s=1.0)
+    after = window_rms(audio, center_s=15.0, half_width_s=1.0)
+    assert after > 0.3 * before, (
+        f"mix RMS dropped from {before:.4f} to {after:.4f}: anonymous SessionEnd silenced "
+        "the mix even though a tracked session was still live")
+
+
+def test_session_tracker_note_end_live_count_and_expiry():
+    tracker = sonifier.SessionTracker()
+    assert tracker.live_count(0.0) == 0
+
+    tracker.note("A", 0.0)
+    tracker.note("B", 5.0)
+    assert tracker.live_count(5.0) == 2
+
+    tracker.end("A")
+    assert tracker.live_count(5.0) == 1
+
+    # falsy ids are ignored entirely
+    tracker.note(None, 5.0)
+    tracker.note("", 5.0)
+    assert tracker.live_count(5.0) == 1
+
+    # B expires after SESSION_EXPIRY_S of silence (terminal died, no SessionEnd)
+    assert tracker.live_count(5.0 + 1800.0 - 1.0) == 1
+    assert tracker.live_count(5.0 + 1800.0 + 1.0) == 0
+
+    # end() on an unknown/already-gone id is a no-op, not an error
+    tracker.end("B")
+    tracker.end("nonexistent")
+    assert tracker.live_count(0.0) == 0

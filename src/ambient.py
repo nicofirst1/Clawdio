@@ -11,7 +11,7 @@ import numpy as np
 from config import (
     SAMPLE_RATE, BLOCKSIZE, TAU_ACTIVITY, CLASS_READ, CLASS_WRITE,
 )
-from classify import classify
+from classify import classify, SessionTracker
 from dsp import Slew, _mono_to_stereo, _limit_ms_ratio
 import geiger  # for the shared _RENDER_FAULT_REPORTED fault-suppression flag
 from ambient_layers import (
@@ -87,6 +87,7 @@ class AmbientTheme:
         self.session_start_t = None
         self.session_ended = False
         self.session_end_t = None
+        self.sessions = SessionTracker()
 
         # Voice pool (drops + bloom notes + gestures). Built before the layer
         # constructors below since they pass self._queue_voice (a bound
@@ -177,6 +178,14 @@ class AmbientTheme:
         self.last_event_t = self.t
         tool_name = ev.get("tool_name")
         tool_input = ev.get("tool_input")
+        session_id = ev.get("session_id")
+        # SessionStart needs the live count from BEFORE this session is
+        # noted, to test the 0 -> 1 transition cleanly; every other branch is
+        # order-insensitive, so note() happens here for all of them and
+        # SessionStart/SessionEnd below read/mutate the tracker themselves.
+        was_live_before = self.sessions.live_count(self.t) > 0
+        if name != "SessionStart":
+            self.sessions.note(session_id, self.t)
         agent_id = ev.get("agent_id")
         if agent_id:
             self.stem.note_presence(agent_id, self.t)
@@ -305,29 +314,45 @@ class AmbientTheme:
                 a2 = _midi_hz(45)
                 self._spawn_note_sequence(rng, [c3, a2], velocity=0.3, spacing=0.55, gain_db=4.0)
         elif name == "SessionStart":
+            # Multi-session: a second (or later) window opening must not
+            # duck/re-fade a soundscape another live session is still using.
+            # was_live_before was captured pre-note above, so this is exactly
+            # the 0 -> 1 transition, not "is this session_id new".
+            first_live_session = not was_live_before
+            self.sessions.note(session_id, self.t)
             self.session_started = True
             self.session_start_t = self.t
             self.session_ended = False
             self.session_end_t = None
-            self._session_fade.value = 0.0
-            self._session_fade.target = 1.0
-            self._session_fade.tau = 1.0
-            self._end_fade.value = 1.0
-            self._end_fade.target = 1.0
+            if first_live_session:
+                self._session_fade.value = 0.0
+                self._session_fade.target = 1.0
+                self._session_fade.tau = 1.0
+                self._end_fade.value = 1.0
+                self._end_fade.target = 1.0
             if self.gestures_enabled:
                 self._spawn_note(rng, ROOT_C2, velocity=0.3, gain_db=4.0)
         elif name == "SessionEnd":
-            self.session_ended = True
-            self.session_end_t = self.t
-            # Brief section 3: "Everything fades to true silence over 4 s."
-            # tau 1.3 => -24 dB at 4 s, and render_block hard-zeros at 4.6 s
-            # (by which point the fade is -31 dB, so the step to true zero is
-            # ~-55 dBFS in absolute terms: inaudible, no click). run_render
-            # extends its tail to 6 s when the last event is SessionEnd so a
-            # real 4 s release actually fits inside the rendered file.
-            self._end_fade.tau = 1.3
-            self._end_fade.target = 0.0
-            self.activity = 0.0
+            self.sessions.end(session_id)
+            others_live = self.sessions.live_count(self.t) > 0
+            # Multi-session: another tracked session is still live, so this
+            # is one session finishing, not the daemon's only user leaving --
+            # skip the global zeroing/fade-to-silence entirely (the Stop-like
+            # cadence gesture above still plays; a session finishing is
+            # information). Single/last session: exactly today's behavior.
+            if not others_live:
+                self.session_ended = True
+                self.session_end_t = self.t
+                # Brief section 3: "Everything fades to true silence over
+                # 4 s." tau 1.3 => -24 dB at 4 s, and render_block hard-zeros
+                # at 4.6 s (by which point the fade is -31 dB, so the step to
+                # true zero is ~-55 dBFS in absolute terms: inaudible, no
+                # click). run_render extends its tail to 6 s when the last
+                # event is SessionEnd so a real 4 s release actually fits
+                # inside the rendered file.
+                self._end_fade.tau = 1.3
+                self._end_fade.target = 0.0
+                self.activity = 0.0
         elif name == "ContextPressure":
             self.set_pressure(ev.get("fill"))
         else:

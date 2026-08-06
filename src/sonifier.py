@@ -57,7 +57,7 @@ from config import (  # noqa: E402,F401
     THEME_GEIGER, THEME_AMBIENT,
     _env_float, _env_bool_flag, _env_int, _env_theme, load_config,
 )
-from classify import classify, _classify_bash_command  # noqa: E402,F401
+from classify import classify, _classify_bash_command, SessionTracker  # noqa: E402,F401
 from dsp import (  # noqa: E402,F401
     Slew, _env_adsr, _sine,
     render_failure_chime, render_done_chime, render_attention_chime,

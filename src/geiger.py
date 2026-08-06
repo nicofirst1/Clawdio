@@ -13,7 +13,7 @@ from config import (
     SAMPLE_RATE, BLOCKSIZE, TAU_ACTIVITY, MAX_CLICK_RATE, MAX_ACTIVE_CHIMES,
     CLASS_READ, TIMBRE,
 )
-from classify import classify
+from classify import classify, SessionTracker
 from dsp import Slew, build_chime_bank, _mono_to_stereo, _make_click_grain
 from logging_setup import get_logger
 
@@ -68,6 +68,7 @@ class EngineState:
 
     t: float = 0.0  # wall/virtual clock, seconds since start
     last_event_t: float = 0.0
+    sessions: SessionTracker = field(default_factory=SessionTracker, repr=False)
 
     def __post_init__(self):
         if self._rng is None:
@@ -94,6 +95,9 @@ class EngineState:
         self.last_event_t = self.t
         tool_name = ev.get("tool_name")
         tool_input = ev.get("tool_input")
+        session_id = ev.get("session_id")
+        if name != "SessionEnd":
+            self.sessions.note(session_id, self.t)
 
         if name == "PreToolUse":
             cls = classify(tool_name, tool_input)
@@ -125,12 +129,19 @@ class EngineState:
             # over from a previous session on this long-lived daemon.
             self.drone_x = 0.0
         elif name == "SessionEnd":
-            self.activity = 0.0
-            # Release the context-pressure drone too. Without this the daemon
-            # keeps droning at the last observed fill for the whole
-            # SONIFIER_IDLE_EXIT_MIN window (default 30 min) after the
-            # session is over.
-            self.drone_x = 0.0
+            self.sessions.end(session_id)
+            # Multi-session: another tracked session is still live, so this
+            # isn't the daemon's only user leaving -- skip the zeroing below
+            # (a session finishing is still visible via subagent_refcount/
+            # activity decay, just not a hard reset out from under the other
+            # session).
+            if self.sessions.live_count(self.t) == 0:
+                self.activity = 0.0
+                # Release the context-pressure drone too. Without this the
+                # daemon keeps droning at the last observed fill for the
+                # whole SONIFIER_IDLE_EXIT_MIN window (default 30 min) after
+                # the session is over.
+                self.drone_x = 0.0
         elif name == "ContextPressure":
             self.set_pressure(ev.get("fill"))
         else:
