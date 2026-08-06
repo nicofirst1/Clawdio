@@ -9,7 +9,6 @@ const $ = (id) => document.getElementById(id);
 // key -> {read: () => value, write: (value) => void}
 const CONTROLS = {
   theme: {
-    read: () => $("theme").querySelector("button.on")?.dataset.value,
     write: (v) => {
       for (const b of $("theme").querySelectorAll("button")) {
         b.classList.toggle("on", b.dataset.value === v);
@@ -164,10 +163,7 @@ function wire() {
     push({ mute: next });
   });
 
-  for (const key of ["clicks", "chimes", "drone", "quiet", "theme_pack"]) {
-    $(key).addEventListener("change", () => push({ [key]: CONTROLS[key].read() }));
-  }
-  for (const key of ["idle_exit_min", "port"]) {
+  for (const key of ["clicks", "chimes", "drone", "quiet", "theme_pack", "idle_exit_min", "port"]) {
     $(key).addEventListener("change", () => push({ [key]: CONTROLS[key].read() }));
   }
 

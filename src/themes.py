@@ -17,8 +17,8 @@ log = get_logger("themes")
 
 # Numeric fields: name -> (lo, hi) clamp bounds. String fields: name ->
 # allowed value tuple. Deliberately excludes derived-at-import constants
-# (DROP_RATE_CAP, OU taus, duck envelope shape), array/structural fields, and
-# the dead NOTE_REVERB_SEND_DB -- see docs/THEMES.md / the theme-packs plan.
+# (DROP_RATE_CAP, OU taus, duck envelope shape) and array/structural fields
+# -- see docs/THEMES.md / the theme-packs plan.
 PACK_SCHEMA = {
     "drop_timbre": DROP_TIMBRES,
     "done_cadence": DONE_CADENCE_MODES,

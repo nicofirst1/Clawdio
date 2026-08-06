@@ -822,7 +822,6 @@ DUCK_HOLD_S = 0.15
 DUCK_RELEASE_S = 0.275
 DUCK_TOTAL_S = DUCK_ATTACK_S + DUCK_HOLD_S + DUCK_RELEASE_S   # 0.45 s
 DUCK_SMOOTH_S = 0.006       # one-pole on the shaped envelope (see _duck_block)
-NOTE_REVERB_SEND_DB = -6.0  # v2.2: note reverb send -6dB vs v2 (mostly direct)
 NOTE_DIRECT_FRAC = 0.80     # notes are now mostly a direct signal, not 100% wet
 NOTE_REVERB_FRAC = 0.15     # secondary send, ~-6dB vs a fully-wet v2 note
 SUBBASS_CAL_DB = 18.0       # L5 sub-bass weather drone (same label-vs-mix
@@ -1004,7 +1003,6 @@ class AmbientConfig:
     DUCK_RELEASE_S: float = DUCK_RELEASE_S
     DUCK_TOTAL_S: float = DUCK_TOTAL_S
     DUCK_SMOOTH_S: float = DUCK_SMOOTH_S
-    NOTE_REVERB_SEND_DB: float = NOTE_REVERB_SEND_DB
     NOTE_DIRECT_FRAC: float = NOTE_DIRECT_FRAC
     NOTE_REVERB_FRAC: float = NOTE_REVERB_FRAC
     SUBBASS_CAL_DB: float = SUBBASS_CAL_DB

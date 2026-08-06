@@ -37,6 +37,7 @@ existing callers (tests/, tools/, eval/, hooks/) keep working unchanged.
 
 from __future__ import annotations
 
+import argparse
 import sys
 
 from logging_setup import configure as _configure_logging, get_logger
@@ -103,7 +104,7 @@ from ambient_layers import (  # noqa: E402,F401
     BED_CAL_DB, MIDLAYER_CAL_DB, AIR_CAL_DB, DROP_CAL_DB,
     DROP_AMP_SPREAD_DB, NOTE_EMBED_CAP_DB, NOTE_EMBED_CAP_IDLE_DB,
     KNOCK_EMBED_CAP_DB, DUCK_DEPTH_DB, DUCK_ATTACK_S, DUCK_HOLD_S,
-    DUCK_RELEASE_S, DUCK_TOTAL_S, DUCK_SMOOTH_S, NOTE_REVERB_SEND_DB,
+    DUCK_RELEASE_S, DUCK_TOTAL_S, DUCK_SMOOTH_S,
     NOTE_DIRECT_FRAC, NOTE_REVERB_FRAC, SUBBASS_CAL_DB,
     STEM_CAL_DB, STEM_DETUNE_CENTS, STEM_LP_HZ, SUBAGENT_PRESENCE_DECAY_S,
     WHOOSH_CAL_DB, AIR_TILT_LO_HZ, AIR_TILT_HI_IDLE_HZ, AIR_TILT_HI_ACTIVE_HZ,
@@ -147,41 +148,41 @@ SONIFIER_VOLUME, SONIFIER_MUTE=1, SONIFIER_IDLE_EXIT_MIN, SONIFIER_LOG_DIR.
 """
 
 
+class _ArgParser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"unknown flag: {message}", file=sys.stderr)
+        print(USAGE, end="", file=sys.stderr)
+        raise SystemExit(2)
+
+    def print_help(self, file=None):
+        print(USAGE, end="", file=file)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
 
-    if "--help" in argv or "-h" in argv:
+    parser = _ArgParser(add_help=False)
+    parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--render", nargs=2, metavar=("IN", "OUT"))
+    parser.add_argument("--seed", type=int, default=0)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return exc.code
+
+    if args.help:
         print(USAGE, end="")
         return 0
 
-    known_flags = ("--check", "--render", "--seed")
-    for arg in argv:
-        if arg.startswith("--") and arg not in known_flags:
-            print(f"unknown flag: {arg}", file=sys.stderr)
-            print(USAGE, end="", file=sys.stderr)
-            return 2
-
     _configure_logging(quiet=_env_bool_flag("SONIFIER_QUIET", False))
 
-    if "--check" in argv:
+    if args.check:
         return run_check()
 
-    if "--render" in argv:
-        idx = argv.index("--render")
-        try:
-            events_path = argv[idx + 1]
-            out_path = argv[idx + 2]
-        except IndexError:
-            print("usage: sonifier.py --render events.jsonl out.wav [--seed N]", file=sys.stderr)
-            return 2
-        seed = 0
-        if "--seed" in argv:
-            sidx = argv.index("--seed")
-            try:
-                seed = int(argv[sidx + 1])
-            except (IndexError, ValueError):
-                seed = 0
-        run_render(events_path, out_path, seed=seed)
+    if args.render:
+        events_path, out_path = args.render
+        run_render(events_path, out_path, seed=args.seed)
         return 0
 
     run_live()
