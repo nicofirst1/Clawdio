@@ -36,7 +36,11 @@ os.environ.setdefault("SONIFIER_QUIET", "1")
 os.environ["SONIFIER_THEME"] = "ambient"
 
 import numpy as np  # noqa: E402
-import sonifier as S  # noqa: E402
+from ambient_layers import (  # noqa: E402
+    AIR_V23_HARD_CEILING_HZ, AIR_V23_LEVEL_CUT_DB, AMBIENT_CONFIG,
+    BURST_COALESCE_WINDOW_S, DROP_MIN_GAP_S, DROP_RATE_SCALE,
+)
+from io_modes import run_render  # noqa: E402
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 SEED = 20260804  # same "date as seed" convention as make_timbre_clips.py
@@ -73,36 +77,39 @@ def render(name, events, seed, drop_timbre=None, v22_mode=False):
     """v22_mode=True temporarily overrides the module globals the way
     eval/make_clips.py's build_block_c does, so the control clip reproduces
     the exact shipped v2.2 engine behavior rather than v2.3's new defaults."""
+    global DROP_MIN_GAP_S, BURST_COALESCE_WINDOW_S, DROP_RATE_SCALE
+    global AIR_V23_LEVEL_CUT_DB, AIR_V23_HARD_CEILING_HZ
+
     jsonl_path = os.path.join(OUT_DIR, f"{name}.jsonl")
     wav_path = os.path.join(OUT_DIR, f"{name}.wav")
     write_jsonl(events, jsonl_path)
 
     saved = dict(
-        drop_min_gap=S.DROP_MIN_GAP_S,
-        coalesce_win=S.BURST_COALESCE_WINDOW_S,
-        rate_scale=S.DROP_RATE_SCALE,
-        air_cut=S.AIR_V23_LEVEL_CUT_DB,
-        air_ceiling=S.AIR_V23_HARD_CEILING_HZ,
-        cfg_timbre=S.AMBIENT_CONFIG.drop_timbre,
+        drop_min_gap=DROP_MIN_GAP_S,
+        coalesce_win=BURST_COALESCE_WINDOW_S,
+        rate_scale=DROP_RATE_SCALE,
+        air_cut=AIR_V23_LEVEL_CUT_DB,
+        air_ceiling=AIR_V23_HARD_CEILING_HZ,
+        cfg_timbre=AMBIENT_CONFIG.drop_timbre,
     )
     try:
         if v22_mode:
-            S.DROP_MIN_GAP_S = 0.150
-            S.BURST_COALESCE_WINDOW_S = 0.250
-            S.DROP_RATE_SCALE = 1.0
-            S.AIR_V23_LEVEL_CUT_DB = 0.0
-            S.AIR_V23_HARD_CEILING_HZ = 1.0e9  # effectively uncapped
-            S.AMBIENT_CONFIG.drop_timbre = "noise"
+            DROP_MIN_GAP_S = 0.150
+            BURST_COALESCE_WINDOW_S = 0.250
+            DROP_RATE_SCALE = 1.0
+            AIR_V23_LEVEL_CUT_DB = 0.0
+            AIR_V23_HARD_CEILING_HZ = 1.0e9  # effectively uncapped
+            AMBIENT_CONFIG.drop_timbre = "noise"
         elif drop_timbre is not None:
-            S.AMBIENT_CONFIG.drop_timbre = drop_timbre
-        S.run_render(jsonl_path, wav_path, seed=seed)
+            AMBIENT_CONFIG.drop_timbre = drop_timbre
+        run_render(jsonl_path, wav_path, seed=seed)
     finally:
-        S.DROP_MIN_GAP_S = saved["drop_min_gap"]
-        S.BURST_COALESCE_WINDOW_S = saved["coalesce_win"]
-        S.DROP_RATE_SCALE = saved["rate_scale"]
-        S.AIR_V23_LEVEL_CUT_DB = saved["air_cut"]
-        S.AIR_V23_HARD_CEILING_HZ = saved["air_ceiling"]
-        S.AMBIENT_CONFIG.drop_timbre = saved["cfg_timbre"]
+        DROP_MIN_GAP_S = saved["drop_min_gap"]
+        BURST_COALESCE_WINDOW_S = saved["coalesce_win"]
+        DROP_RATE_SCALE = saved["rate_scale"]
+        AIR_V23_LEVEL_CUT_DB = saved["air_cut"]
+        AIR_V23_HARD_CEILING_HZ = saved["air_ceiling"]
+        AMBIENT_CONFIG.drop_timbre = saved["cfg_timbre"]
 
     mp3_path = os.path.join(OUT_DIR, f"{name}.mp3")
     if shutil.which("ffmpeg"):

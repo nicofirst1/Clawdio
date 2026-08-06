@@ -47,7 +47,7 @@ os.environ.setdefault("SONIFIER_QUIET", "1")
 os.environ["SONIFIER_THEME"] = "ambient"
 
 import numpy as np  # noqa: E402
-import sonifier as S  # noqa: E402
+from io_modes import run_render  # noqa: E402
 import classify  # noqa: E402
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -172,7 +172,7 @@ def render(name, events, seed, pan_only=False):
     try:
         if pan_only:
             classify.SLOT_PALETTE = tuple((pan, 0) for pan, _semi in saved_palette)
-        S.run_render(jsonl_path, wav_path, seed=seed)
+        run_render(jsonl_path, wav_path, seed=seed)
     finally:
         classify.SLOT_PALETTE = saved_palette
 

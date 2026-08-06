@@ -14,12 +14,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 os.environ.setdefault("SONIFIER_QUIET", "1")
 
 import numpy as np  # noqa: E402
-import sonifier as S  # noqa: E402
+from ambient import AmbientTheme  # noqa: E402
+from config import BLOCKSIZE, SAMPLE_RATE  # noqa: E402
 from analyze_render import (run_battery, arc, print_arc, mono, rms_db,  # noqa: E402
                             welch_psd, octave_bands, spectral_slope, db)
 
-SR = S.SAMPLE_RATE
-BS = S.BLOCKSIZE
+SR = SAMPLE_RATE
+BS = BLOCKSIZE
 
 
 def render(theme, dur_s, script=None):
@@ -65,7 +66,7 @@ def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "steady"
     dur = float(sys.argv[2]) if len(sys.argv) > 2 else 60.0
     seed = int(os.environ.get("LAB_SEED", "1234"))
-    th = S.AmbientTheme(seed=seed, quiet=True, volume=1.0)
+    th = AmbientTheme(seed=seed, quiet=True, volume=1.0)
     if mode == "steady":
         script = steady_script(dur, period=float(os.environ.get("LAB_PERIOD", "2.0")))
     elif mode == "idle":

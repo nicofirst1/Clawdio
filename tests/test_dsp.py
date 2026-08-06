@@ -13,11 +13,18 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-import sonifier  # noqa: E402
+from ambient_layers import SUBAGENT_PRESENCE_DECAY_S  # noqa: E402
+from classify import classify  # noqa: E402
+from config import (  # noqa: E402
+    BLOCKSIZE, CLASS_EXEC, CLASS_READ, CLASS_WRITE, MAX_ACTIVE_CHIMES,
+    MAX_CLICK_RATE, SAMPLE_RATE, _env_bool_flag,
+)
+from geiger import EngineState, _current_click_rates, render_block  # noqa: E402
+from io_modes import _make_http_server, _udp_recv_loop, run_render  # noqa: E402
 
 
-SR = sonifier.SAMPLE_RATE
-BLOCK = sonifier.BLOCKSIZE
+SR = SAMPLE_RATE
+BLOCK = BLOCKSIZE
 
 
 # --------------------------------------------------------------------------
@@ -25,7 +32,7 @@ BLOCK = sonifier.BLOCKSIZE
 # --------------------------------------------------------------------------
 
 def make_state(seed=0, clicks=True, chimes=True, drone=False, volume=1.0):
-    return sonifier.EngineState(
+    return EngineState(
         sr=SR,
         volume=volume,
         mute=False,
@@ -41,7 +48,7 @@ def render_n_blocks(state, n_blocks):
     """Render n_blocks worth of audio and return the concatenated buffer."""
     chunks = []
     for _ in range(n_blocks):
-        chunks.append(sonifier.render_block(state, BLOCK))
+        chunks.append(render_block(state, BLOCK))
     return np.concatenate(chunks, axis=0)
 
 
@@ -61,13 +68,13 @@ def render_events_offline(events, duration_s, seed=0, **state_kwargs):
         while ev_idx < len(events) and events[ev_idx][0] < block_end_t:
             state.handle_event(events[ev_idx][1])
             ev_idx += 1
-        out[b * BLOCK:(b + 1) * BLOCK, :] = sonifier.render_block(state, BLOCK)
+        out[b * BLOCK:(b + 1) * BLOCK, :] = render_block(state, BLOCK)
         block_start_t = block_end_t
     return out, state
 
 
 def render_constant_activity(activity, duration_s, seed=0, clicks=True, chimes=False,
-                              drone=False, tool_class=sonifier.CLASS_READ):
+                              drone=False, tool_class=CLASS_READ):
     """Render click train with activity pinned to a constant value each
     block (bypassing the leaky-integrator decay), for click-rate testing."""
     state = make_state(seed=seed, clicks=clicks, chimes=chimes, drone=drone)
@@ -76,7 +83,7 @@ def render_constant_activity(activity, duration_s, seed=0, clicks=True, chimes=F
     chunks = []
     for _ in range(n_blocks):
         state.activity = activity
-        chunks.append(sonifier.render_block(state, BLOCK))
+        chunks.append(render_block(state, BLOCK))
     return np.concatenate(chunks, axis=0)
 
 
@@ -181,13 +188,13 @@ def test_click_rate_capped_at_25_with_subagent_register():
     chunks = []
     for _ in range(n_blocks):
         state.activity = 1.0
-        chunks.append(sonifier.render_block(state, BLOCK))
+        chunks.append(render_block(state, BLOCK))
     audio = np.concatenate(chunks, axis=0)
     # min_gap_s wider than a single grain's ring-out (~12ms max) so one
     # physical click isn't counted as multiple onsets via its own ringing.
     onsets = count_onsets(audio, min_gap_s=0.008)
     rate = onsets / 6.0
-    assert rate <= sonifier.MAX_CLICK_RATE + 5, f"click rate {rate}/s exceeds cap generously"
+    assert rate <= MAX_CLICK_RATE + 5, f"click rate {rate}/s exceeds cap generously"
 
 
 def test_malformed_event_ignored_no_exception():
@@ -208,7 +215,7 @@ def test_malformed_event_ignored_no_exception():
     for bad in bad_inputs:
         state.handle_event(bad)  # must not raise
     # engine should still be renderable afterwards
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert block.shape == (BLOCK, 2)
     assert np.all(np.isfinite(block))
 
@@ -225,7 +232,7 @@ def test_malformed_json_lines_ignored_in_render(tmp_path):
     ]
     events_path.write_text("\n".join(lines) + "\n")
     # must not raise
-    sonifier.run_render(str(events_path), str(out_path), seed=8)
+    run_render(str(events_path), str(out_path), seed=8)
     assert out_path.exists()
     assert out_path.stat().st_size > 44  # more than just a WAV header
 
@@ -233,7 +240,7 @@ def test_malformed_json_lines_ignored_in_render(tmp_path):
 def test_render_block_never_raises_on_broken_state():
     state = make_state(seed=9)
     state.activity = float("nan")
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert block.shape == (BLOCK, 2)
     # render_block must guarantee finite (silence-on-error) output
     assert np.all(np.isfinite(block))
@@ -244,56 +251,56 @@ def test_render_block_never_raises_on_broken_state():
 # --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tool_name,tool_input,expected", [
-    ("Read", {"file_path": "/a.py"}, sonifier.CLASS_READ),
-    ("Glob", {"pattern": "*.py"}, sonifier.CLASS_READ),
-    ("Grep", {"pattern": "foo"}, sonifier.CLASS_READ),
-    ("WebFetch", {"url": "http://x"}, sonifier.CLASS_READ),
-    ("WebSearch", {"query": "x"}, sonifier.CLASS_READ),
-    ("Write", {"file_path": "/a.py"}, sonifier.CLASS_WRITE),
-    ("Edit", {"file_path": "/a.py"}, sonifier.CLASS_WRITE),
-    ("NotebookEdit", {"file_path": "/a.ipynb"}, sonifier.CLASS_WRITE),
+    ("Read", {"file_path": "/a.py"}, CLASS_READ),
+    ("Glob", {"pattern": "*.py"}, CLASS_READ),
+    ("Grep", {"pattern": "foo"}, CLASS_READ),
+    ("WebFetch", {"url": "http://x"}, CLASS_READ),
+    ("WebSearch", {"query": "x"}, CLASS_READ),
+    ("Write", {"file_path": "/a.py"}, CLASS_WRITE),
+    ("Edit", {"file_path": "/a.py"}, CLASS_WRITE),
+    ("NotebookEdit", {"file_path": "/a.ipynb"}, CLASS_WRITE),
     ("Task", {}, None),
     ("Agent", {}, None),
 ])
 def test_classify_known_tools(tool_name, tool_input, expected):
-    assert sonifier.classify(tool_name, tool_input) == expected
+    assert classify(tool_name, tool_input) == expected
 
 
 @pytest.mark.parametrize("cmd,expected", [
-    ("ls -la", sonifier.CLASS_READ),
-    ("cat file.txt", sonifier.CLASS_READ),
-    ("grep foo bar.txt", sonifier.CLASS_READ),
-    ("rg foo", sonifier.CLASS_READ),
-    ("find . -name x", sonifier.CLASS_READ),
-    ("head -n 5 file", sonifier.CLASS_READ),
-    ("tail -f log", sonifier.CLASS_READ),
-    ("jq '.foo' file.json", sonifier.CLASS_READ),
-    ("git status", sonifier.CLASS_READ),
-    ("git log --oneline", sonifier.CLASS_READ),
-    ("git diff HEAD", sonifier.CLASS_READ),
-    ("git commit -m 'x'", sonifier.CLASS_EXEC),
-    ("git push origin main", sonifier.CLASS_EXEC),
-    ("rm -rf /tmp/x", sonifier.CLASS_EXEC),
-    ("npm install", sonifier.CLASS_EXEC),
-    ("python3 script.py", sonifier.CLASS_EXEC),
-    ("/usr/bin/cat file", sonifier.CLASS_READ),
+    ("ls -la", CLASS_READ),
+    ("cat file.txt", CLASS_READ),
+    ("grep foo bar.txt", CLASS_READ),
+    ("rg foo", CLASS_READ),
+    ("find . -name x", CLASS_READ),
+    ("head -n 5 file", CLASS_READ),
+    ("tail -f log", CLASS_READ),
+    ("jq '.foo' file.json", CLASS_READ),
+    ("git status", CLASS_READ),
+    ("git log --oneline", CLASS_READ),
+    ("git diff HEAD", CLASS_READ),
+    ("git commit -m 'x'", CLASS_EXEC),
+    ("git push origin main", CLASS_EXEC),
+    ("rm -rf /tmp/x", CLASS_EXEC),
+    ("npm install", CLASS_EXEC),
+    ("python3 script.py", CLASS_EXEC),
+    ("/usr/bin/cat file", CLASS_READ),
 ])
 def test_classify_bash_commands(cmd, expected):
-    assert sonifier.classify("Bash", {"command": cmd}) == expected
+    assert classify("Bash", {"command": cmd}) == expected
 
 
 def test_classify_bash_no_command():
-    assert sonifier.classify("Bash", {}) == sonifier.CLASS_EXEC
-    assert sonifier.classify("Bash", None) == sonifier.CLASS_EXEC
+    assert classify("Bash", {}) == CLASS_EXEC
+    assert classify("Bash", None) == CLASS_EXEC
 
 
 def test_classify_unknown_tool_name_defaults_exec():
-    assert sonifier.classify("SomeRandomFutureTool", {}) == sonifier.CLASS_EXEC
+    assert classify("SomeRandomFutureTool", {}) == CLASS_EXEC
 
 
 def test_classify_none_tool_name():
-    assert sonifier.classify(None, {}) is None
-    assert sonifier.classify("", {}) is None
+    assert classify(None, {}) is None
+    assert classify("", {}) is None
 
 
 # --------------------------------------------------------------------------
@@ -305,7 +312,7 @@ def test_pretooluse_bumps_activity_and_sets_class():
     assert state.activity == 0.0
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {}})
     assert state.activity == pytest.approx(0.35, abs=1e-9)
-    assert state.current_class == sonifier.CLASS_WRITE
+    assert state.current_class == CLASS_WRITE
     assert state.pending_immediate_click is True
 
 
@@ -381,8 +388,8 @@ def test_active_chimes_bounded_under_event_flood():
     state = make_state(seed=6)
     for _ in range(5000):
         state.handle_event({"hook_event_name": "Notification"})
-    assert len(state.active_chimes) <= sonifier.MAX_ACTIVE_CHIMES
-    block = sonifier.render_block(state, BLOCK)
+    assert len(state.active_chimes) <= MAX_ACTIVE_CHIMES
+    block = render_block(state, BLOCK)
     assert np.all(np.isfinite(block))
 
 
@@ -412,7 +419,7 @@ def test_nonfinite_activity_does_not_wedge_click_scheduler():
     """NaN activity used to make every Poisson comparison False forever."""
     state = make_state(seed=9, chimes=False, drone=False)
     state.activity = float("nan")
-    sonifier.render_block(state, BLOCK)
+    render_block(state, BLOCK)
     assert math.isfinite(state.activity)
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Bash",
                         "tool_input": {"command": "make"}})
@@ -428,7 +435,7 @@ def test_http_rejects_oversized_content_length_without_blocking():
     import time as _time
 
     state = make_state(seed=10)
-    httpd = sonifier._make_http_server(state, 0)  # ephemeral port
+    httpd = _make_http_server(state, 0)  # ephemeral port
     port = httpd.server_address[1]
     _threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
@@ -452,7 +459,7 @@ def test_http_event_and_health_roundtrip():
     import urllib.request as _req
 
     state = make_state(seed=11, chimes=False)
-    httpd = sonifier._make_http_server(state, 0)
+    httpd = _make_http_server(state, 0)
     port = httpd.server_address[1]
     _threading.Thread(target=httpd.serve_forever, daemon=True).start()
     try:
@@ -479,7 +486,7 @@ def test_udp_ingress_survives_malformed_datagrams():
     probe.bind(("127.0.0.1", 0))
     port = probe.getsockname()[1]
     probe.close()
-    t = _threading.Thread(target=sonifier._udp_recv_loop, args=(state, port, stop), daemon=True)
+    t = _threading.Thread(target=_udp_recv_loop, args=(state, port, stop), daemon=True)
     t.start()
 
     def _wait_until(cond, deadline_s=2.0, interval_s=0.01):
@@ -549,7 +556,7 @@ def test_env_bool_flag_accepts_off_and_no():
                           ("OFF", False), ("1", True), ("true", True), ("yes", True)]:
         os.environ["SONIFIER_TEST_FLAG"] = val
         try:
-            assert sonifier._env_bool_flag("SONIFIER_TEST_FLAG", True) is expected, val
+            assert _env_bool_flag("SONIFIER_TEST_FLAG", True) is expected, val
         finally:
             del os.environ["SONIFIER_TEST_FLAG"]
 
@@ -564,14 +571,14 @@ def test_render_is_deterministic_for_a_fixed_seed(tmp_path):
             (2.0, {"hook_event_name": "Stop"}),
         ]) + "\n")
     a, b = tmp_path / "a.wav", tmp_path / "b.wav"
-    sonifier.run_render(str(events_path), str(a), seed=7)
-    sonifier.run_render(str(events_path), str(b), seed=7)
+    run_render(str(events_path), str(a), seed=7)
+    run_render(str(events_path), str(b), seed=7)
     assert a.read_bytes() == b.read_bytes()
 
 
 def test_render_missing_file_exits_cleanly(tmp_path):
     with pytest.raises(SystemExit) as ei:
-        sonifier.run_render(str(tmp_path / "nope.jsonl"), str(tmp_path / "o.wav"))
+        run_render(str(tmp_path / "nope.jsonl"), str(tmp_path / "o.wav"))
     assert ei.value.code == 2
 
 
@@ -584,15 +591,15 @@ def test_geiger_subagent_register_survives_missing_start():
     })
     state.activity = 0.6
     assert state.subagent_refcount == 0
-    _, sub_rate = sonifier._current_click_rates(state)
+    _, sub_rate = _current_click_rates(state)
     assert sub_rate > 0.0
 
     # advance the virtual clock past the decay window with no further
     # events from sub-1
-    state.t += sonifier.SUBAGENT_PRESENCE_DECAY_S + 2.0
+    state.t += SUBAGENT_PRESENCE_DECAY_S + 2.0
     # a no-op event on a different (or no) agent_id to trigger re-evaluation
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {}})
-    _, sub_rate_after = sonifier._current_click_rates(state)
+    _, sub_rate_after = _current_click_rates(state)
     assert sub_rate_after == 0.0
 
 
@@ -601,10 +608,10 @@ def test_geiger_subagent_register_legacy_start_stop_still_works():
     state.handle_event({"hook_event_name": "SessionStart"})
     state.handle_event({"hook_event_name": "SubagentStart"})
     state.activity = 0.6
-    _, sub_rate = sonifier._current_click_rates(state)
+    _, sub_rate = _current_click_rates(state)
     assert sub_rate > 0.0
     state.handle_event({"hook_event_name": "SubagentStop"})
-    _, sub_rate_after = sonifier._current_click_rates(state)
+    _, sub_rate_after = _current_click_rates(state)
     assert sub_rate_after == 0.0
 
 
