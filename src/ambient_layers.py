@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover - environment dependent
 from config import SAMPLE_RATE, CLASS_READ, CLASS_WRITE, CLASS_EXEC
 from dsp import Slew, _mono_to_stereo
 from logging_setup import get_logger
+from classify import SUBAGENT_PRESENCE_DECAY_S  # single source of truth (shared with geiger)
 
 log = get_logger("sonifier")
 
@@ -829,14 +830,6 @@ SUBBASS_CAL_DB = 18.0       # L5 sub-bass weather drone (same label-vs-mix
 STEM_CAL_DB = 18.0
 STEM_DETUNE_CENTS = np.array([-9.0, 0.0, 9.0])
 STEM_LP_HZ = 520.0
-# ponytail: max gap between subagent-tagged events before we consider that
-# subagent gone. SubagentStart/Stop are unreliable (observed 4 starts vs 13
-# stops in a real daemon log), so presence is driven by ANY event carrying
-# an agent_id instead of matched start/stop counting. Subagents can pause
-# several seconds "thinking" between tool calls -- 12s is a guess at
-# covering that without the stem lingering long after the subagent is
-# actually done; tune if the stem cuts out mid-subagent or lingers too long.
-SUBAGENT_PRESENCE_DECAY_S = 12.0
 WHOOSH_CAL_DB = 30.0        # L2 bash-in-flight swell: the brief's -34 dBFS is
                             # again relative to its own -26 dBFS bed; raw, the
                             # swell measured 26 dB under this mix's 252 Hz band

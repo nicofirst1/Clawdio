@@ -85,14 +85,15 @@ class SessionTracker:
         return len(self._last_seen)
 
 
-# ponytail: mirrors ambient_layers.py's StemLayer presence dict (added in
-# 9238252 to route around unreliable SubagentStart/Stop counts, since a
-# real daemon log showed 4 starts vs 13 stops). Shared here so geiger's
-# click gate and ambient's stem gate use one decay implementation instead
-# of two that can drift apart on the next tuning pass. ambient_layers.py's
-# own SUBAGENT_PRESENCE_DECAY_S = 12.0 (line ~839) is left as a duplicate
-# literal rather than importing this one -- out of scope for this change,
-# since it lives in a file this change doesn't otherwise touch.
+# Decay window for subagent presence: how long after an agent_id was last seen
+# we still count that subagent "probably active". Presence is driven by ANY
+# event carrying an agent_id, not matched SubagentStart/Stop counting, because
+# those are unreliable (9238252: a real daemon log showed 4 starts vs 13 stops).
+# 12s is a guess at covering a subagent that pauses "thinking" between tool
+# calls without lingering long after it's done -- tune if the stem/register
+# cuts out mid-subagent or hangs on too long. Single source of truth: geiger's
+# click gate (SubagentPresenceTracker below) and ambient's StemLayer both read
+# this one value (ambient_layers.py imports it from here).
 SUBAGENT_PRESENCE_DECAY_S = 12.0
 
 
