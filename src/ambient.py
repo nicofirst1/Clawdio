@@ -186,6 +186,23 @@ class AmbientTheme:
         was_live_before = self.sessions.live_count(self.t) > 0
         if name != "SessionStart":
             self.sessions.note(session_id, self.t)
+        # BRIEF-v2.5: this session's voice slot for its discrete gestures
+        # (failure knock, Stop cadence, needs-you chime, ack note). Read once
+        # here and baked into whatever gesture this event queues. slot_pan is
+        # the equal-power pan; slot_semi the pitch transpose. For the only
+        # live session -- and any event without a session_id -- this is
+        # (0.0, 0), i.e. the legacy center path (byte-identical single-session
+        # render). SessionStart's own note()/slot-assign happens in its branch
+        # below (after the count check), so its chime is out of scope by
+        # construction and stays center, per the v2.5 scope.
+        slot_pan, slot_semi = self.sessions.slot_of(session_id)
+        slot_pitch = 2.0 ** (slot_semi / 12.0)  # 1.0 when slot_semi == 0
+        # The chime and ack note are randomly panned within +-NOTE_PAN_LIMIT
+        # today (pan=None). For the center slot we MUST keep that random draw
+        # untouched (byte-identical single-session render); an off-center slot
+        # replaces it with the fixed slot pan. The knock and cadence are
+        # pan=0.0-explicit, so they take slot_pan directly with no such dance.
+        slot_gesture_pan = None if slot_pan == 0.0 else slot_pan
         agent_id = ev.get("agent_id")
         if agent_id:
             self.stem.note_presence(agent_id, self.t)
@@ -238,11 +255,12 @@ class AmbientTheme:
                 # v2.2 embedding rule: knock peak <= bed RMS + KNOCK_EMBED_CAP_DB,
                 # relative to the CURRENT calibrated bed reference (not a fixed trim).
                 bed_ref_db = self.bed.bed_level_db.value + BED_CAL_DB
-                knock = _render_knock(rng, velocity=0.75, sr=self.sr) * _db_to_lin(
+                knock = _render_knock(rng, velocity=0.75, sr=self.sr,
+                                      pitch_factor=slot_pitch) * _db_to_lin(
                     bed_ref_db + KNOCK_EMBED_CAP_DB)
-                direct = _mono_to_stereo((knock * 0.85).astype(np.float64), pan=0.0)
+                direct = _mono_to_stereo((knock * 0.85).astype(np.float64), pan=slot_pan)
                 self._queue_voice({"buf": direct, "pos": 0, "bus": "direct"})
-                send = _mono_to_stereo((knock * 0.15).astype(np.float64), pan=0.0)
+                send = _mono_to_stereo((knock * 0.15).astype(np.float64), pan=slot_pan)
                 self._queue_voice({"buf": send, "pos": 0, "bus": "reverb"})
             self.bed.handle_failure(tool_name)
             # BRIEF: "repeated failures each pull master LP down another
@@ -260,7 +278,8 @@ class AmbientTheme:
             self.activity += 0.2
             if self.gestures_enabled:
                 pitch_midi = int(rng.choice([55, 57]))  # G3 / A3
-                self._spawn_note(rng, _midi_hz(pitch_midi), velocity=0.35, gain_db=2.0)
+                self._spawn_note(rng, _midi_hz(pitch_midi), velocity=0.35, gain_db=2.0,
+                                 pan=slot_gesture_pan, pitch_factor=slot_pitch)
         elif name == "Stop":
             self.bed.handle_stop(self.t)
             if self.gestures_enabled:
@@ -281,10 +300,12 @@ class AmbientTheme:
                     notes = _build_cadence_notes_v24(rng)
                     land_delay_s = (len(notes) - 1) * cadence_spacing
                     self._spawn_note(rng, ROOT_C2, velocity=0.5, delay_s=land_delay_s,
-                                     gain_db=2.0, pan=0.0)
-                # brief-v2.2 section 5: "knock/cadence center" -- pan=0.0.
+                                     gain_db=2.0, pan=slot_pan, pitch_factor=slot_pitch)
+                # brief-v2.2 section 5: "knock/cadence center" (pan=0.0) for
+                # the sole session; a slotted session places its cadence at
+                # slot_pan / transposes it by the slot offset (BRIEF-v2.5).
                 self._spawn_note_sequence(rng, notes, velocity=0.4, spacing=cadence_spacing,
-                                          gain_db=-2.0, pan=0.0)
+                                          gain_db=-2.0, pan=slot_pan, pitch_factor=slot_pitch)
             self.activity *= 0.3
             self.fail_penalty_hz = 0.0
             self.fail_penalty_slew.tau = 5.0
@@ -301,9 +322,11 @@ class AmbientTheme:
                 # ~2 kHz, still distinct and inviting, no longer piercing.
                 a4 = _midi_hz(69)
                 e4 = _midi_hz(64)
-                self._spawn_note(rng, a4, velocity=0.3, bell=True, i_peak=1.2, gain_db=5.0)
+                self._spawn_note(rng, a4, velocity=0.3, bell=True, i_peak=1.2, gain_db=5.0,
+                                 pan=slot_gesture_pan, pitch_factor=slot_pitch)
                 self._spawn_note(rng, e4, velocity=0.3, bell=True, i_peak=1.2,
-                                 delay_s=0.18, gain_db=5.0)
+                                 delay_s=0.18, gain_db=5.0,
+                                 pan=slot_gesture_pan, pitch_factor=slot_pitch)
         elif name == "SubagentStart":
             self.stem.handle_subagent_start(self.t)
         elif name == "SubagentStop":
@@ -382,7 +405,12 @@ class AmbientTheme:
             _voice_pool_add(self.voices, voice, self.sr)
 
     def _spawn_note(self, rng, freq, velocity=0.4, bell=False, i_peak=None, pan=None,
-                    delay_s=0.0, gain_db=0.0, embed_cap_db=NOTE_EMBED_CAP_DB):
+                    delay_s=0.0, gain_db=0.0, embed_cap_db=NOTE_EMBED_CAP_DB,
+                    pitch_factor=1.0):
+        # pitch_factor is the BRIEF-v2.5 per-session slot transpose. Slot 0
+        # (and every non-gesture caller) passes 1.0, so `freq * 1.0 == freq`
+        # bit-identically -- the single-session render stays byte-identical.
+        freq = freq * pitch_factor
         sig = _render_fm_note(rng, freq, velocity, sr=self.sr, bell=bell, i_peak_override=i_peak)
         if pan is None:
             # brief-v2.2 section 5: melodic notes constrained to +-0.20 (was
@@ -409,9 +437,11 @@ class AmbientTheme:
         self._queue_voice({"buf": stereo * NOTE_DIRECT_FRAC, "pos": 0, "bus": "direct"})
         self._queue_voice({"buf": stereo * NOTE_REVERB_FRAC, "pos": 0, "bus": "reverb"})
 
-    def _spawn_note_sequence(self, rng, freqs, velocity=0.4, spacing=0.2, gain_db=0.0, pan=None):
+    def _spawn_note_sequence(self, rng, freqs, velocity=0.4, spacing=0.2, gain_db=0.0, pan=None,
+                             pitch_factor=1.0):
         for i, f in enumerate(freqs):
-            self._spawn_note(rng, f, velocity=velocity, delay_s=i * spacing, gain_db=gain_db, pan=pan)
+            self._spawn_note(rng, f, velocity=velocity, delay_s=i * spacing, gain_db=gain_db,
+                             pan=pan, pitch_factor=pitch_factor)
 
     # -- render_block: theme interface leg -----------------------------------
 

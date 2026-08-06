@@ -1564,3 +1564,122 @@ def test_session_tracker_note_end_live_count_and_expiry():
     tracker.end("B")
     tracker.end("nonexistent")
     assert tracker.live_count(0.0) == 0
+
+
+# --------------------------------------------------------------------------
+# BRIEF-v2.5: per-session voice slots for the discrete gestures
+# --------------------------------------------------------------------------
+
+def _channel_energy(audio, center_s, half_width_s):
+    """(left_rms, right_rms) over a window."""
+    lo = max(0, int((center_s - half_width_s) * SR))
+    hi = min(len(audio), int((center_s + half_width_s) * SR))
+    seg = audio[lo:hi].astype(np.float64)
+    if len(seg) == 0:
+        return 0.0, 0.0
+    return (float(np.sqrt(np.mean(seg[:, 0] ** 2))),
+            float(np.sqrt(np.mean(seg[:, 1] ** 2))))
+
+
+def test_session_tracker_slot_allocation():
+    """BRIEF-v2.5 section 2.1/2.3/5: first-free order, free-on-end, reuse,
+    6+ sharing the last slot, and falsy/unknown id -> center slot."""
+    from classify import SessionTracker, SLOT_PALETTE, CENTER_SLOT
+
+    tr = SessionTracker()
+    # First-free, in arrival order: 0, 1, 2, 3, 4.
+    for sid in ("a", "b", "c", "d", "e"):
+        tr.note(sid, 0.0)
+    assert [tr.slot_of(s) for s in ("a", "b", "c", "d", "e")] == list(SLOT_PALETTE)
+
+    # 6th and beyond share the LAST slot (graceful tail collision, no crash).
+    tr.note("f", 0.0)
+    tr.note("g", 0.0)
+    assert tr.slot_of("f") == SLOT_PALETTE[-1]
+    assert tr.slot_of("g") == SLOT_PALETTE[-1]
+
+    # Freeing a slot returns it to the pool; the next new id reuses it.
+    tr.end("b")  # frees slot 1
+    assert tr.slot_of("b") == CENTER_SLOT  # gone -> center default
+    tr.note("h", 1.0)
+    assert tr.slot_of("h") == SLOT_PALETTE[1]  # reused the freed slot 1
+
+    # Expiry (no clean SessionEnd) also frees the slot.
+    from classify import SESSION_EXPIRY_S
+    assert tr.live_count(SESSION_EXPIRY_S + 2.0) == 0
+    assert tr.slot_of("a") == CENTER_SLOT
+
+    # Falsy id and never-seen id both get the center slot, never allocate.
+    assert tr.slot_of(None) == CENTER_SLOT
+    assert tr.slot_of("") == CENTER_SLOT
+    assert tr.slot_of("never-seen") == CENTER_SLOT
+    tr.note(None, 0.0)
+    tr.note("", 0.0)
+    assert tr.live_count(SESSION_EXPIRY_S + 2.0) == 0  # falsy ids allocated nothing
+
+    # First session assigned always takes slot 0 (center) -- the hard
+    # backward-compat requirement (section 2.2).
+    tr2 = SessionTracker()
+    tr2.note("first", 0.0)
+    assert tr2.slot_of("first") == CENTER_SLOT
+    tr2.note("second", 0.0)
+    assert tr2.slot_of("first") == CENTER_SLOT  # does NOT migrate when B arrives
+    assert tr2.slot_of("second") == SLOT_PALETTE[1]
+
+
+def test_second_session_gestures_lateralize_to_its_slot_side():
+    """BRIEF-v2.5 acceptance criterion 2: with two live sessions, the second
+    session's discrete gestures land on its slot's side. Session A starts
+    first (slot 0, center); session B second (slot 1, pan -0.40, LEFT). B
+    plays a needs-you chime and a Stop cadence; both windows must show more
+    left- than right-channel energy. Lenient per repo convention: just an
+    asymmetry in the correct direction, not a calibrated dB figure."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart", "session_id": "A"}),
+        (0.5, {"hook_event_name": "SessionStart", "session_id": "B"}),
+    ]
+    # A works quietly (centered reads) so the room is live but not itself
+    # lateralized; B fires the two gestures under test.
+    events += _tool_events("A", 1.0, 20.0, step=1.5)
+    events.append((6.0, {"hook_event_name": "Notification", "session_id": "B"}))
+    events.append((12.0, {"hook_event_name": "Stop", "session_id": "B"}))
+
+    audio, state = render_events(events, duration_s=16.0, seed=21)
+    # B is slot 1 -> pan -0.40, LEFT-heavy.
+    assert state.sessions.slot_of("B")[0] < 0.0
+
+    chime_l, chime_r = _channel_energy(audio, center_s=6.2, half_width_s=0.4)
+    assert chime_l > chime_r, (
+        f"B's needs-you chime should be left-heavy (slot 1): L={chime_l:.5f} R={chime_r:.5f}")
+
+    # cadence is a multi-note sequence starting at t=12; window covers its run.
+    cad_l, cad_r = _channel_energy(audio, center_s=12.7, half_width_s=0.7)
+    assert cad_l > cad_r, (
+        f"B's Stop cadence should be left-heavy (slot 1): L={cad_l:.5f} R={cad_r:.5f}")
+
+
+def test_first_session_gestures_stay_centered_while_second_lateralizes():
+    """BRIEF-v2.5 section 2.2: session A holds slot 0 (center) even after B
+    claims slot 1. A's own gestures stay channel-symmetric; B's are pushed to
+    its side. Same render exercises both so the contrast is direct."""
+    events = [
+        (0.0, {"hook_event_name": "SessionStart", "session_id": "A"}),
+        (0.5, {"hook_event_name": "SessionStart", "session_id": "B"}),
+        (5.0, {"hook_event_name": "Stop", "session_id": "A"}),   # A: center
+        (11.0, {"hook_event_name": "Stop", "session_id": "B"}),  # B: left (slot 1)
+    ]
+    audio, state = render_events(events, duration_s=15.0, seed=22)
+    assert state.sessions.slot_of("A")[0] == 0.0
+    assert state.sessions.slot_of("B")[0] < 0.0
+
+    a_l, a_r = _channel_energy(audio, center_s=5.7, half_width_s=0.7)
+    b_l, b_r = _channel_energy(audio, center_s=11.7, half_width_s=0.7)
+
+    # A's cadence is near-symmetric (center slot); B's is clearly left-heavy.
+    # A's L/R differ only by the bed's continuous stereo content, so use a
+    # loose ratio band around 1.0 for A and a firm inequality for B.
+    a_ratio = a_l / (a_r + 1e-12)
+    assert 0.8 < a_ratio < 1.25, (
+        f"A's cadence should stay ~centered: L={a_l:.5f} R={a_r:.5f} ratio={a_ratio:.3f}")
+    assert b_l > b_r * 1.1, (
+        f"B's cadence should be lateralized left: L={b_l:.5f} R={b_r:.5f}")

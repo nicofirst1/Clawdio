@@ -37,7 +37,7 @@ python3 tools/complaint_checks.py          # regression checks for known listene
 - **`src/` is split into one module per concern** (`sonifier.py` re-exports every name, so callers in tests/, tools/, eval/, hooks/ keep working):
   - `sonifier.py` (190 ln) entry point + backward-compat re-export facade + CLI arg parsing
   - `config.py` constants, env-var helpers, config-file layer, `load_config()`/`save_config()`
-  - `classify.py` event `classify()` decision table (tool -> read/write/exec, subagent, etc.); also `SessionTracker`, which tracks live `session_id`s so multi-session daemons don't let one session's `SessionEnd` silence a room another session is still using
+  - `classify.py` event `classify()` decision table (tool -> read/write/exec, subagent, etc.); also `SessionTracker`, which tracks live `session_id`s so multi-session daemons don't let one session's `SessionEnd` silence a room another session is still using, and owns the per-session gesture voice-slot table (pan/pitch, BRIEF-v2.5)
   - `dsp.py` shared DSP primitives: chime/click grain builders, ADSR, stereo helpers
   - `geiger.py` `GeigerTheme` (legacy v1 click-train), `EngineState`, `render_block`
   - `ambient_layers.py` the AmbientTheme layers: bed, rain, bloom, stems, weather, Freeverb

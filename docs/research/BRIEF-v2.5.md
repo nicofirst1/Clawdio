@@ -1,6 +1,6 @@
 # BRIEF-v2.5 — "Who Is That" (2026-08-06)
 
-Status: draft. Depends on the SessionTracker landing (v2.4.x). This brief assumes that live-session tracking already exists: a `SessionTracker` in `src/classify.py` maps `session_id` to last-seen time with a 30-minute expiry, and the SessionEnd fade-out and activity-zeroing are already gated on last-session-out (a SessionEnd from one of several live sessions no longer fades the whole room). v2.5 builds on that tracker and touches nothing it does not need to. It changes only how discrete session-scoped gestures are placed in the stereo field and pitch register; it does not touch the continuous textures, the pacing law, the timbre, or the Stop cadence melody itself.
+Status: implemented, pending round 6. Depends on the SessionTracker landing (v2.4.x). This brief assumes that live-session tracking already exists: a `SessionTracker` in `src/classify.py` maps `session_id` to last-seen time with a 30-minute expiry, and the SessionEnd fade-out and activity-zeroing are already gated on last-session-out (a SessionEnd from one of several live sessions no longer fades the whole room). v2.5 builds on that tracker and touches nothing it does not need to. It changes only how discrete session-scoped gestures are placed in the stereo field and pitch register; it does not touch the continuous textures, the pacing law, the timbre, or the Stop cadence melody itself.
 
 ## 1. The problem: two windows, one voice
 

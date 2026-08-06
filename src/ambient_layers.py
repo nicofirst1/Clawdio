@@ -585,7 +585,7 @@ def _render_fm_note(rng, freq, velocity, sr=SAMPLE_RATE, bell=False, i_peak_over
     return sig.astype(np.float64)
 
 
-def _render_knock(rng, velocity=0.7, sr=SAMPLE_RATE):
+def _render_knock(rng, velocity=0.7, sr=SAMPLE_RATE, pitch_factor=1.0):
     """Low wooden knock: modal woodblock, modes ratio 1:1.47:2.09:2.56 on
     155 Hz, tau 70-110 ms, noise contact transient. Deliberately localized in
     80-400 Hz.
@@ -612,7 +612,11 @@ def _render_knock(rng, velocity=0.7, sr=SAMPLE_RATE):
     Measured effect: +3.6 dB of 80-400 Hz envelope peak for the same peak
     amplitude, which is what lets KNOCK_EMBED_CAP_DB come back down from the
     builder's +23 to +16 without losing criterion 9c."""
-    base = 155.0
+    # pitch_factor is the BRIEF-v2.5 per-session slot transpose; slot 0 passes
+    # 1.0 so `base * 1.0 == base` bit-identically (byte-identical single-
+    # session render). The modal ratios ride the shifted base, so the whole
+    # knock transposes coherently rather than detuning.
+    base = 155.0 * pitch_factor
     ratios = (1.0, 1.47, 2.09, 2.56)
     mode_phases = (0.0, 0.31, 0.63, 0.17)
     dur = 0.5
