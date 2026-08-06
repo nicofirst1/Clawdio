@@ -1,0 +1,3 @@
+numpy
+scipy
+sounddevice  # live playback only; offline --render works without it

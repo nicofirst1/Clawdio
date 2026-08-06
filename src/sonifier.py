@@ -131,8 +131,33 @@ except Exception:  # pragma: no cover - environment dependent
 # CLI entry point
 # --------------------------------------------------------------------------
 
+USAGE = """\
+usage: sonifier.py [--check | --render IN.jsonl OUT.wav [--seed N] | --help]
+
+  (no args)               run the live daemon (needs sounddevice)
+  --check                 print config/capability JSON, exit
+  --render IN.jsonl OUT.wav [--seed N]
+                          offline render, no audio hardware needed
+  -h, --help              show this message and exit
+
+Key env vars: SONIFIER_PORT (9753), SONIFIER_THEME (ambient|geiger),
+SONIFIER_VOLUME, SONIFIER_MUTE=1, SONIFIER_IDLE_EXIT_MIN, SONIFIER_LOG_DIR.
+"""
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+
+    if "--help" in argv or "-h" in argv:
+        print(USAGE, end="")
+        return 0
+
+    known_flags = ("--check", "--render", "--seed")
+    for arg in argv:
+        if arg.startswith("--") and arg not in known_flags:
+            print(f"unknown flag: {arg}", file=sys.stderr)
+            print(USAGE, end="", file=sys.stderr)
+            return 2
 
     _configure_logging(quiet=_env_bool_flag("SONIFIER_QUIET", False))
 

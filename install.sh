@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — idempotent installer for Clawdio (formerly claude-geiger / agent-sonifier).
+# install.sh — idempotent installer for Clawdio.
 #
 # What it does:
 #   1. Checks for python3 and numpy (required), notes sounddevice as
@@ -23,6 +23,8 @@
 #   --dry-run        Print what would happen; make no changes anywhere.
 #   --yes / -y        Non-interactive: assume "yes" to the merge prompt.
 #   --no-merge         Never touch settings.json, just print instructions.
+#   --uninstall        Surgically remove this repo's hook entries from
+#                      settings.json (same scope/backup rules as install).
 #   --global          Install hooks globally (see Scope above).
 #   --project          Install hooks for this project only (see Scope above).
 #   --claude-dir DIR  Override the Claude config dir used for --global
@@ -39,18 +41,21 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -
 DRY_RUN=0
 ASSUME_YES=0
 NO_MERGE=0
+UNINSTALL=0
 SCOPE=""
 CLAUDE_DIR="${CLAUDE_DIR:-${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}}"
 
 usage() {
     cat <<EOF
 Usage: install.sh [--dry-run] [--yes|-y] [--no-merge] [--global|--project] [--claude-dir DIR]
+       install.sh --uninstall [--dry-run] [--global|--project] [--claude-dir DIR]
 
   --dry-run          Show what would happen; make no changes.
   --yes, -y          Non-interactive: assume yes for the settings merge.
   --no-merge         Never touch settings.json; print instructions only.
-  --global           Install hooks in \$CLAUDE_DIR/settings.json (every project).
-  --project          Install hooks in <repo>/.claude/settings.json (this project only).
+  --uninstall        Remove this repo's hook entries from settings.json (see Scope).
+  --global           Install/uninstall hooks in \$CLAUDE_DIR/settings.json (every project).
+  --project          Install/uninstall hooks in <repo>/.claude/settings.json (this project only).
                       Neither flag + interactive: prompts. Neither + non-interactive: --global.
   --claude-dir DIR   Claude config directory for --global (default: \$CLAUDE_CONFIG_DIR or \$HOME/.claude).
 EOF
@@ -61,6 +66,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY_RUN=1 ;;
         --yes|-y) ASSUME_YES=1 ;;
         --no-merge) NO_MERGE=1 ;;
+        --uninstall) UNINSTALL=1 ;;
         --global) SCOPE="global" ;;
         --project) SCOPE="project" ;;
         --claude-dir) CLAUDE_DIR="$2"; shift ;;
@@ -101,7 +107,7 @@ else
     SETTINGS_DIR="$CLAUDE_DIR"
 fi
 
-say "== claude-geiger installer =="
+say "== Clawdio installer =="
 say "project dir: $SCRIPT_DIR"
 say "scope:       $SCOPE"
 if [ "$SCOPE" = "global" ]; then
@@ -114,6 +120,61 @@ fi
 say ""
 
 # ---------------------------------------------------------------------
+# 0. --uninstall: surgically remove this repo's hook entries, then exit.
+# ---------------------------------------------------------------------
+
+if [ "$UNINSTALL" -eq 1 ]; then
+    if ! command -v jq >/dev/null 2>&1; then
+        say "ERROR: jq not found; can't uninstall automatically." >&2
+        say "  Remove any hooks pointing at $SCRIPT_DIR/hooks/{send-event,autostart-daemon}.sh" >&2
+        say "  by hand from: $SETTINGS_DIR/settings.json" >&2
+        exit 1
+    fi
+
+    SETTINGS="$SETTINGS_DIR/settings.json"
+    say "-- uninstalling Clawdio hooks ($SCOPE) --"
+
+    if [ ! -f "$SETTINGS" ]; then
+        say "  $SETTINGS does not exist; nothing to do."
+        exit 0
+    fi
+    if ! jq empty "$SETTINGS" >/dev/null 2>&1; then
+        say "ERROR: $SETTINGS is not valid JSON; refusing to touch it." >&2
+        exit 1
+    fi
+
+    # Drop any hook entry whose command references our two scripts by path
+    # (send-event.sh / autostart-daemon.sh), then prune whatever that leaves
+    # empty: a matcher-group with no hooks left, an event key with no
+    # matcher-groups left, and the whole "hooks" object if nothing remains.
+    uninstalled="$(jq '
+        def prune_hooks: .hooks |= map(select(.command | test("hooks/(send-event|autostart-daemon)\\.sh") | not));
+        (.hooks // {}) as $h
+        | ($h | with_entries(.value |= (map(prune_hooks | select((.hooks // []) | length > 0))))) as $pruned
+        | ($pruned | with_entries(select((.value | length) > 0))) as $final
+        | if ($final | length) == 0 then del(.hooks) else . + {hooks: $final} end
+    ' "$SETTINGS")"
+
+    if diff -q <(jq -S . "$SETTINGS") <(printf '%s' "$uninstalled" | jq -S .) >/dev/null 2>&1; then
+        say "  no Clawdio hook entries found in $SETTINGS; nothing to do."
+        exit 0
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        say "  [dry-run] would remove Clawdio hook entries from $SETTINGS (backed up first)"
+        exit 0
+    fi
+
+    ts="$(date +%Y%m%d%H%M%S)"
+    backup="${SETTINGS}.bak.${ts}"
+    cp "$SETTINGS" "$backup"
+    say "  backed up existing settings to $backup"
+    printf '%s\n' "$uninstalled" >"$SETTINGS"
+    say "  removed Clawdio hook entries from $SETTINGS"
+    exit 0
+fi
+
+# ---------------------------------------------------------------------
 # 1. Dependency checks
 # ---------------------------------------------------------------------
 
@@ -123,33 +184,41 @@ if ! command -v python3 >/dev/null 2>&1; then
     say "ERROR: python3 not found on PATH. Install python3 >= 3.10 and re-run." >&2
     exit 1
 fi
-PY_VER="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
-say "  python3: OK ($PY_VER)"
 
-if python3 -c 'import numpy' >/dev/null 2>&1; then
+# Prefer the repo's venv python (has numpy/scipy/sounddevice) over plain
+# python3, same resolution hooks/autostart-daemon.sh uses -- so what we
+# check here is what the daemon actually runs.
+REPO_VENV_PY="$SCRIPT_DIR/.venv/bin/python"
+PYTHON="$([ -x "$REPO_VENV_PY" ] && printf '%s' "$REPO_VENV_PY" || printf '%s' python3)"
+
+PY_VER="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])')"
+say "  interpreter: $PYTHON ($PY_VER)"
+
+if "$PYTHON" -c 'import numpy' >/dev/null 2>&1; then
     say "  numpy: OK"
 else
-    say "  numpy: MISSING (required by src/sonifier.py, including offline --render)."
-    say "         Install with: pip install numpy --break-system-packages"
-    say "         (or: pip install numpy   inside a venv)"
+    say "ERROR: numpy MISSING (required by src/sonifier.py, including offline --render)." >&2
+    say "       Install with: python3 -m pip install -r requirements.txt" >&2
+    say "       Or skip setup entirely: uv run src/sonifier.py --check" >&2
+    say "       (src/sonifier.py has a PEP 723 header uv reads to build a venv on the fly)." >&2
+    exit 1
 fi
 
-if python3 -c 'import scipy' >/dev/null 2>&1; then
+if "$PYTHON" -c 'import scipy' >/dev/null 2>&1; then
     say "  scipy: OK"
 else
     say "  scipy: MISSING (required by the default AmbientTheme sound -- v2's"
     say "         Freeverb/bed/rain filtering. GeigerTheme, SONIFIER_THEME=geiger,"
     say "         still runs without it, but ambient will sound degraded/unfiltered.)"
-    say "         Install with: pip install scipy --break-system-packages"
-    say "         (or: pip install scipy   inside a venv)"
+    say "         Install with: python3 -m pip install -r requirements.txt"
 fi
 
-if python3 -c 'import sounddevice' >/dev/null 2>&1; then
+if "$PYTHON" -c 'import sounddevice' >/dev/null 2>&1; then
     say "  sounddevice: OK (live audio playback available)"
 else
     say "  sounddevice: not installed (OPTIONAL -- only needed for live audio"
     say "               playback; offline --render works without it)."
-    say "               Install with: pip install sounddevice --break-system-packages"
+    say "               Install with: python3 -m pip install -r requirements.txt"
 fi
 
 if command -v jq >/dev/null 2>&1; then
@@ -269,8 +338,12 @@ else
                 say "  [dry-run] would keep \${CLAUDE_PROJECT_DIR} unexpanded in the snippet's hook commands"
             fi
             if [ -f "$SETTINGS" ]; then
-                say "  [dry-run] would back up $SETTINGS -> ${SETTINGS}.bak.<timestamp>"
-                say "  [dry-run] would merge hooks (per-event union with your existing hooks, deduped) into $SETTINGS"
+                if ! jq empty "$SETTINGS" >/dev/null 2>&1; then
+                    say "  [dry-run] WARNING: $SETTINGS is not valid JSON; a real run would fail here" >&2
+                else
+                    say "  [dry-run] would back up $SETTINGS -> ${SETTINGS}.bak.<timestamp> (skipped if merge is a no-op)"
+                    say "  [dry-run] would merge hooks (per-event union with your existing hooks, deduped) into $SETTINGS"
+                fi
             else
                 say "  [dry-run] would create $SETTINGS from the snippet's hooks block"
             fi
@@ -280,11 +353,6 @@ else
             resolved_snippet > "$snippet_tmp"
 
             if [ -f "$SETTINGS" ]; then
-                ts="$(date +%Y%m%d%H%M%S)"
-                backup="${SETTINGS}.bak.${ts}"
-                cp "$SETTINGS" "$backup"
-                say "  backed up existing settings to $backup"
-
                 tmp="$(mktemp)"
                 # Merge: existing settings as base, snippet's "hooks" overlaid
                 # on top event-by-event. For each event name present in
@@ -306,11 +374,20 @@ else
                     )) as $merged_hooks |
                     $base + { hooks: $merged_hooks }
                 ' "$SETTINGS" "$snippet_tmp" > "$tmp"; then
-                    mv "$tmp" "$SETTINGS"
-                    say "  merged hooks into $SETTINGS"
+                    if diff -q <(jq -S . "$SETTINGS") <(jq -S . "$tmp") >/dev/null 2>&1; then
+                        rm -f "$tmp"
+                        say "  $SETTINGS already up to date; no changes"
+                    else
+                        ts="$(date +%Y%m%d%H%M%S)"
+                        backup="${SETTINGS}.bak.${ts}"
+                        cp "$SETTINGS" "$backup"
+                        say "  backed up existing settings to $backup"
+                        mv "$tmp" "$SETTINGS"
+                        say "  merged hooks into $SETTINGS"
+                    fi
                 else
                     rm -f "$tmp"
-                    say "  ERROR: jq merge failed; left $SETTINGS untouched (backup at $backup)" >&2
+                    say "  ERROR: jq merge failed; left $SETTINGS untouched" >&2
                     manual_instructions
                     exit 1
                 fi
