@@ -37,7 +37,7 @@ python3 tools/complaint_checks.py          # regression checks for known listene
 - **`src/` is split into one module per concern** (`sonifier.py` re-exports every name, so callers in tests/, tools/, eval/, hooks/ keep working):
   - `sonifier.py` (190 ln) entry point + backward-compat re-export facade + CLI arg parsing
   - `config.py` constants, env-var helpers, config-file layer, `load_config()`/`save_config()`
-  - `classify.py` event `classify()` decision table (tool -> read/write/exec, subagent, etc.)
+  - `classify.py` event `classify()` decision table (tool -> read/write/exec, subagent, etc.); also `SessionTracker`, which tracks live `session_id`s so multi-session daemons don't let one session's `SessionEnd` silence a room another session is still using
   - `dsp.py` shared DSP primitives: chime/click grain builders, ADSR, stereo helpers
   - `geiger.py` `GeigerTheme` (legacy v1 click-train), `EngineState`, `render_block`
   - `ambient_layers.py` the AmbientTheme layers: bed, rain, bloom, stems, weather, Freeverb
@@ -45,13 +45,14 @@ python3 tools/complaint_checks.py          # regression checks for known listene
   - `io_modes.py` ingress (UDP + `ThreadingHTTPServer`), `run_render`/`run_live`/`run_check`
   - `logging_setup.py` centralised logging (`get_logger`, console + optional rotating file)
   - `simulate_session.py` fires or emits a simulated session
-- **Ingress** (`io_modes.py`): UDP + HTTP on `SONIFIER_PORT` (default 9753). `POST /event` + `GET /health` are LAN-open; `GET`/`POST /config` and `POST /restart` are loopback-only (no auth); `GET /` serves the static web control panel from `web/`. Everything outside the theme (ingress, ports, CLI, env contract) is theme-agnostic.
-- **Config layer** (`config.py`): defaults < env vars < config file. `~/.config/clawdio/config.json` (read-only fallback to old `~/.config/agent-sonifier/config.json`; `SONIFIER_CONFIG` overrides the path) is written by the web panel and **overrides env vars**; the daemon logs the path at startup.
-- **Themes**: `AmbientTheme` (default, v2.x: bed pad, rain grains, melodic bloom, subagent stems, context-pressure weather, one shared Freeverb room) and `GeigerTheme` (legacy v1 click-train, `SONIFIER_THEME=geiger`, no scipy needed). AmbientTheme degrades gracefully without scipy (filters become no-ops), never crashes.
+- **Ingress** (`io_modes.py`): UDP + HTTP on `SONIFIER_PORT`. Everything outside the theme (ingress, ports, CLI, env contract) is theme-agnostic.
+- **Config layer** (`config.py`): defaults < env vars < config file; the daemon logs the file path at startup.
+- **Themes**: `AmbientTheme` (default) and `GeigerTheme` (legacy v1, `SONIFIER_THEME=geiger`, no scipy needed). AmbientTheme degrades gracefully without scipy (filters become no-ops), never crashes.
+- **Multi-session gating**: both themes only zero activity / fade to silence on `SessionEnd` when `SessionTracker` shows no other tracked session still live, so a second open window doesn't get cut off by the first one closing.
 - **Determinism**: `--seed` makes renders reproducible; tests and eval clips depend on this. Audio is generated per-block (`render_block`, 48 kHz, blocksize 256); the render path and live path share the same engine.
-- **Design is spec-driven**: `docs/research/BRIEF-v2*.md` are the authoritative synthesis specs per version (v2.2 "Warm Room", v2.3 woodblock drops, v2.4 Stop cadence); `docs/PROJECT.md` is the dossier/design history. Changes to the sound should trace to a brief; blind-listener feedback rounds live in `eval/`.
-- **Hooks**: `hooks/send-event.sh` fire-and-forget UDP per hook event; `hooks/autostart-daemon.sh` launches the daemon on SessionStart if 9753 isn't answering. This repo's own `.claude/settings.json` wires them up, so working here dogfoods the daemon: a sonifier may be running while you edit it. To hear your changes: `curl -X POST http://127.0.0.1:9753/restart` (or the panel's "restart now" button) re-execs the daemon in place, picking up code edits and staged config; no pkill needed.
-- **Tests are deliberately lenient** (non-silence, rough levels, determinism, no-NaN) to avoid RNG flakiness; `tests/test_config_api.py` covers the config-file layer + `/config` endpoint. The strict psychoacoustic battery lives in `tools/analyze_render.py` and is run against renders, not in pytest.
+- **Design is spec-driven**: `docs/research/BRIEF-v2*.md` are the authoritative synthesis specs per version; `docs/PROJECT.md` is the dossier/design history. Changes to the sound should trace to a brief; blind-listener feedback rounds live in `eval/`.
+- **Hooks**: `hooks/send-event.sh` fire-and-forget UDP per hook event; `hooks/autostart-daemon.sh` launches the daemon on SessionStart if 9753 isn't answering. This repo's own `.claude/settings.json` wires them up, so a sonifier may be running while you edit it. To hear changes: `curl -X POST http://127.0.0.1:9753/restart` re-execs the daemon in place; no pkill needed.
+- **Tests are deliberately lenient** (non-silence, rough levels, determinism, no-NaN) to avoid RNG flakiness. The strict psychoacoustic battery lives in `tools/analyze_render.py`, run against renders, not in pytest.
 
 ## Env contract (main knobs)
 
