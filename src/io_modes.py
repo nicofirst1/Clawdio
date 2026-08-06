@@ -153,14 +153,14 @@ _STATIC_FILES = {
 }
 
 # How each live config key maps onto theme-state attributes. Ambient renamed
-# clicks/chimes to rain/gestures at init, and RainLayer keeps its own copy of
-# rain_enabled (read at render time), so every existing candidate gets set --
-# dotted paths reach into layers.
+# clicks/chimes to rain/gestures at init; RainLayer.rain_enabled reads
+# through to the theme's flag (no separate copy to set), so a single
+# top-level attribute name per key is enough here.
 _LIVE_ATTRS = {
     "volume": ("volume",),
     "mute": ("mute",),
-    "clicks": ("clicks_enabled", "rain_enabled", "rain.rain_enabled"),
-    "chimes": ("chimes_enabled", "gestures_enabled"),
+    "clicks": ("rain_enabled",),
+    "chimes": ("gestures_enabled",),
     "drone": ("drone_enabled",),
 }
 

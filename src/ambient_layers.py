@@ -1446,12 +1446,12 @@ class RainLayer:
     passing its own _ingress_rng) and monkeypatched directly by the test
     suite."""
 
-    def __init__(self, rng, queue_voice, sr, rain_enabled, drop_timbre="woodblock", cfg=None):
+    def __init__(self, rng, queue_voice, sr, theme, drop_timbre="woodblock", cfg=None):
         self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self._rng = rng
         self._queue_voice = queue_voice
         self.sr = sr
-        self.rain_enabled = rain_enabled
+        self._theme = theme
 
         self.drop_bank = _build_drop_bank(rng, sr, timbre=drop_timbre)
         self.rain_next_dt = 0.05
@@ -1488,6 +1488,14 @@ class RainLayer:
         else:  # pragma: no cover
             self._air_hp = ([1.0], [1.0])
         self._air_norm = _air_norm_factor(sr, self.cfg.AIR_TILT_HI_IDLE_HZ, self._air_hp)
+
+    @property
+    def rain_enabled(self) -> bool:
+        """Reads through to the theme's live flag -- no snapshot, so a live
+        toggle (POST /config) is visible here without a separate write path
+        (f812cc7 was exactly this: a cached copy the live-apply path forgot to
+        reach). See AmbientTheme.rain_enabled, the single source of truth."""
+        return self._theme.rain_enabled
 
     def spawn_one_drop(self, rng, cls, fill_smooth_value, extra_gain_db=0.0):
         """Render and queue exactly one drop voice (the coalesced unit --

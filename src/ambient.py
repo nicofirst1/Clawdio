@@ -124,7 +124,7 @@ class AmbientTheme:
         # byte-identical renders under a fixed seed.
         self.bed = BedLayer(self._rng, self._apply_lp_stage, sr,
                            done_cadence=self.cfg.done_cadence, cfg=self.cfg)
-        self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled,
+        self.rain = RainLayer(self._rng, self._queue_voice, sr, self,
                                drop_timbre=self.cfg.drop_timbre, cfg=self.cfg)
         self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr,
                                  cfg=self.cfg)
