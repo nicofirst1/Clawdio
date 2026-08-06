@@ -1,0 +1,12 @@
+{
+    "name": "porcelain",
+    "description": "Brighter and sparser: open air, higher bed, crisp plink drops.",
+    "drop_timbre": "plink",
+    "BED_LP_BASE_HZ": 1400,
+    "MIDLAYER_LP_HZ": 2800,
+    "AIR_TILT_HI_IDLE_HZ": 3200,
+    "AIR_TILT_HI_ACTIVE_HZ": 5000,
+    "AIR_V23_HARD_CEILING_HZ": 3400,
+    "DROP_RATE_SCALE": 0.4,
+    "NOTE_EMBED_CAP_IDLE_DB": 7
+}

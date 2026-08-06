@@ -42,6 +42,7 @@ python3 tools/complaint_checks.py          # regression checks for known listene
   - `geiger.py` `GeigerTheme` (legacy v1 click-train), `EngineState`, `render_block`
   - `ambient_layers.py` the AmbientTheme layers: bed, rain, bloom, stems, weather, Freeverb
   - `ambient.py` `AmbientTheme` (assembles the layers into one theme)
+  - `themes.py` theme packs: `PACK_SCHEMA`, `list_packs()`/`load_pack()`, JSON overrides of `AmbientConfig`
   - `io_modes.py` ingress (UDP + `ThreadingHTTPServer`), `run_render`/`run_live`/`run_check`
   - `logging_setup.py` centralised logging (`get_logger`, console + optional rotating file)
   - `simulate_session.py` fires or emits a simulated session
@@ -56,4 +57,4 @@ python3 tools/complaint_checks.py          # regression checks for known listene
 
 ## Env contract (main knobs)
 
-`SONIFIER_PORT` (9753), `SONIFIER_THEME` (ambient|geiger), `SONIFIER_VOLUME`, `SONIFIER_MUTE=1`, `SONIFIER_IDLE_EXIT_MIN`, `SONIFIER_CLICKS`, `SONIFIER_CHIMES`, `SONIFIER_DRONE`, `SONIFIER_QUIET`, `SONIFIER_CONFIG` (config-file path), `SONIFIER_LOG_LEVEL`, `SONIFIER_LOG_FILE` (rotating debug log), `SONIFIER_LOG_DIR` (where `hooks/autostart-daemon.sh` writes `sonifier.log`).
+`SONIFIER_PORT` (9753), `SONIFIER_THEME` (ambient|geiger), `SONIFIER_THEME_PACK` (ambient theme pack name, restart key, see `docs/THEMES.md`), `SONIFIER_VOLUME`, `SONIFIER_MUTE=1`, `SONIFIER_IDLE_EXIT_MIN`, `SONIFIER_CLICKS`, `SONIFIER_CHIMES`, `SONIFIER_DRONE`, `SONIFIER_QUIET`, `SONIFIER_CONFIG` (config-file path), `SONIFIER_LOG_LEVEL`, `SONIFIER_LOG_FILE` (rotating debug log), `SONIFIER_LOG_DIR` (where `hooks/autostart-daemon.sh` writes `sonifier.log`).

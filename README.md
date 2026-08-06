@@ -104,6 +104,7 @@ Every knob is an env var; a config file (written by the web panel) **overrides**
 | `SONIFIER_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                            |
 | `SONIFIER_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)                  |
 | `SONIFIER_CONFIG`        | `~/.config/claudio/config.json` | override config file path                           |
+| `SONIFIER_THEME_PACK`    | unset                           | ambient theme pack name (restart key; see below)    |
 
 Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 
@@ -113,24 +114,25 @@ Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 
 `geiger` (legacy v1, no scipy): Poisson click train tracking activity, read/write/exec timbres, failure/Stop tones.
 
+`ambient` also takes a **theme pack**: a small JSON file that overrides a whitelisted set of sound constants, no code changes. `dusk` (darker, slower) and `porcelain` (brighter, sparser) ship in `themes/`. Select with `SONIFIER_THEME_PACK`, `theme_pack` in the config file, or the web panel. Details and the full field table: `docs/THEMES.md`.
+
 ## Offline render and demos
 
 ```bash
 python3 src/sonifier.py --render events.jsonl out.wav --seed 7   # 48kHz stereo WAV, fixed RNG
 ```
 
-`events.jsonl`: one JSON object per line, `{"t": <seconds>, "event": {<hook JSON>}}`; duration = last `t` + 3s tail. Demos in `demos/`: `realistic-session.jsonl` (blind-listening render), `focus-session-v2.jsonl` (60s steady, no failures), `demo-session-v2.jsonl` (full storyboard), `demo-session.jsonl` (v1, use `SONIFIER_THEME=geiger`).
+`events.jsonl`: one JSON object per line, `{"t": <seconds>, "event": {<hook JSON>}}`; duration = last `t` + 3s tail. Four demos ship in `demos/`, from a full storyboard to a v1/geiger clip.
 
 ```bash
 python3 src/simulate_session.py --emit-jsonl my-session.jsonl   # or write your own script
 python3 src/simulate_session.py --speed 4    # fire a session at a running daemon, 4x realtime
-python3 src/simulate_session.py --http       # over HTTP instead of UDP
 ```
 
 ## Tests and tooling
 
 ```bash
-python3 -m pytest tests/ -q                        # 134 tests, deliberately lenient (no RNG flakiness)
+python3 -m pytest tests/ -q                        # 154 tests, deliberately lenient (no RNG flakiness)
 python3 tools/lab.py steady 60                     # render + strict metric battery
 python3 tools/analyze_render.py out.wav --arc      # PASS/FAIL vs BRIEF section-7 criteria
 python3 tools/complaint_checks.py out.wav \

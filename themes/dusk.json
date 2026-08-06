@@ -1,0 +1,13 @@
+{
+    "name": "dusk",
+    "description": "Darker and slower: muffled low end, dimmer air, sparse marimba drops.",
+    "drop_timbre": "marimba",
+    "BED_LP_BASE_HZ": 850,
+    "MIDLAYER_LP_HZ": 1600,
+    "AIR_TILT_HI_IDLE_HZ": 1900,
+    "AIR_TILT_HI_ACTIVE_HZ": 2800,
+    "AIR_V23_HARD_CEILING_HZ": 2000,
+    "DROP_RATE_SCALE": 0.35,
+    "DROP_MIN_GAP_S": 0.45,
+    "SETTLED_BLOOM_RATE_SCALE": 0.25
+}

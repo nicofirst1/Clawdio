@@ -1,0 +1,49 @@
+name: Theme pack
+description: Share a theme pack (JSON preset for the ambient theme).
+title: "[theme pack] "
+labels: ["theme-pack"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share a JSON pack for the `ambient` theme. See `docs/THEMES.md` for the field reference and how packs load.
+  - type: input
+    id: version
+    attributes:
+      label: Claudio version
+      description: panel footer or `python3 src/sonifier.py --check`
+      placeholder: "2.5.0"
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: Pack name
+      description: the filename you'd give it, e.g. `dusk`
+    validations:
+      required: true
+  - type: textarea
+    id: pack_json
+    attributes:
+      label: Pack JSON
+      description: the full contents of your `<name>.json` file
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: intent
+    attributes:
+      label: What it's going for, and how it sounds
+      description: what you changed, why, and what it sounds like in practice
+    validations:
+      required: true
+  - type: checkboxes
+    id: verified
+    attributes:
+      label: Verified
+      options:
+        - label: >-
+            I rendered this pack with
+            `SONIFIER_THEME_PACK=<name> python3 src/sonifier.py --render demos/demo-session-v2.jsonl clip.wav --seed 7`
+            and attached or listened to the result.
+          required: false
