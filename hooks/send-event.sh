@@ -53,8 +53,8 @@ import socket, sys
 data = sys.stdin.buffer.read()
 if data:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.sendto(data, ("'"$HOST"'", '"$PORT"'))
-' 2>/dev/null && exit 0
+    s.sendto(data, (sys.argv[1], int(sys.argv[2])))
+' "$HOST" "$PORT" 2>/dev/null && exit 0
 fi
 
 # Daemon may simply not be running yet (e.g. very first SessionStart before

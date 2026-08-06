@@ -151,6 +151,20 @@ def test_geiger_theme_alias_still_works():
     assert sonifier.GeigerTheme is sonifier.EngineState
 
 
+def test_run_render_survives_non_dict_final_event(tmp_path):
+    # Regression: a JSONL line whose "event" value is a non-dict (e.g. a
+    # stray string) used to crash at events[-1][1].get("hook_event_name")
+    # with AttributeError, so the offline render never wrote a WAV at all.
+    events_path = tmp_path / "events.jsonl"
+    events_path.write_text(
+        '{"t": 0.0, "event": {"hook_event_name": "UserPromptSubmit"}}\n'
+        '{"t": 2.0, "event": "x"}\n'
+    )
+    out_path = tmp_path / "out.wav"
+    sonifier.run_render(str(events_path), str(out_path), seed=0)
+    assert out_path.exists() and out_path.stat().st_size > 0
+
+
 # --------------------------------------------------------------------------
 # non-silence / silence contract
 # --------------------------------------------------------------------------

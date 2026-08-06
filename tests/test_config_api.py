@@ -2,6 +2,7 @@
 the server is exercised against a GeigerTheme state that is never rendered."""
 
 import json
+import math
 import os
 import sys
 import threading
@@ -159,3 +160,29 @@ def test_event_endpoint_still_works(server):
     _state, port, _ = server
     status, _data = _post(port, "/event", {"hook_event_name": "PreToolUse", "tool_name": "Read"})
     assert status == 200
+
+
+def test_post_config_infinite_idle_normalizes_to_default(server, cfg_file):
+    # Regression: {"idle_exit_min": 1e999} used to persist literal Infinity
+    # into config.json, permanently breaking the web panel's JSON.parse.
+    _state, port, _ = server
+    status, data = _post(port, "/config", {"idle_exit_min": float("1e999")})
+    assert status == 200 and data["ok"]
+    assert math.isfinite(data["config"]["idle_exit_min"])
+    status, body = _get(port, "/config")
+    data = json.loads(body)
+    assert math.isfinite(data["config"]["idle_exit_min"])
+    # config.json on disk must stay valid, boring JSON -- no Infinity token.
+    raw = cfg_file.read_text()
+    json.loads(raw)
+    assert "Infinity" not in raw
+
+
+def test_post_config_nan_idle_does_not_zero_it(server):
+    # Regression: {"idle_exit_min": NaN} used to become max(0.0, nan) = 0.0,
+    # which made the daemon idle-exit within 1s.
+    _state, port, _ = server
+    status, data = _post(port, "/config", {"idle_exit_min": float("nan")})
+    assert status == 200 and data["ok"]
+    assert data["config"]["idle_exit_min"] != 0.0
+    assert math.isfinite(data["config"]["idle_exit_min"])

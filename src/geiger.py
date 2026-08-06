@@ -247,7 +247,6 @@ def _emit_click(state, out, start_idx, cls, pan=0.0, freq_mult=1.0, gain_mult=1.
     grain = _make_click_grain(rng, center, timbre["q"], decay, amp, sr=state.sr)
     n = len(grain)
     stereo = _mono_to_stereo(grain, pan=pan)
-    end_idx = start_idx + n
     avail = out.shape[0] - start_idx
     if avail <= 0:
         return
@@ -274,6 +273,10 @@ def _geiger_render_block(state: EngineState, n=BLOCKSIZE) -> np.ndarray:
         # ---- CLICK TRAIN ----
         if state.clicks_enabled:
             _render_clicks(state, out, n)
+        else:
+            # Clicks disabled live (web UI) with a click already pending:
+            # drop it rather than let it fire stale on re-enable.
+            state.pending_immediate_click = False
 
         # ---- CHIMES ----
         if state.chimes_enabled and state.active_chimes:

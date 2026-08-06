@@ -12,8 +12,8 @@
   --amber-dim: #6b4d1a;
   --blue: #7fb4c9;
   --red: #d4543c;
-  --mono: "Chivo Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  --serif: "Instrument Serif", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --serif: Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; margin: 0; }
@@ -185,6 +185,7 @@ input[type="range"]::-moz-range-thumb {
 .switch { display: flex; flex-direction: column; align-items: center; gap: .55rem;
   cursor: pointer; font-size: .68rem; letter-spacing: .18em; text-transform: uppercase;
   color: var(--etch); }
+.switch[hidden] { display: none; }
 .switch input { position: absolute; opacity: 0; pointer-events: none; }
 .switch i {
   width: 26px; height: 46px; border-radius: 13px; position: relative;

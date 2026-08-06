@@ -3,7 +3,7 @@ of sonifier.py; see sonifier.py for the module overview."""
 
 from __future__ import annotations
 
-from config import CLASS_READ, CLASS_WRITE, CLASS_EXEC, READ_BASH_CMDS, GIT_READ_SUBCOMMANDS, TOOL_CLASS
+from config import CLASS_READ, CLASS_EXEC, READ_BASH_CMDS, GIT_READ_SUBCOMMANDS, TOOL_CLASS
 
 
 def _classify_bash_command(cmd):

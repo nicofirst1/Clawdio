@@ -46,6 +46,9 @@ function relabelVoices(theme) {
   for (const span of document.querySelectorAll(".switches span[data-ambient]")) {
     span.textContent = theme === "geiger" ? span.dataset.geiger : span.dataset.ambient;
   }
+  // Drone is a GeigerTheme-only voice (AmbientTheme.render_block never reads
+  // drone_enabled); hide the control rather than let it toggle a no-op.
+  $("drone").closest(".switch").hidden = theme !== "geiger";
 }
 
 function showBanner(pending) {

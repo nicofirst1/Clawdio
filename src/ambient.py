@@ -572,6 +572,13 @@ class AmbientTheme:
         # duck is still running restarts the envelope at u=0, which without
         # smoothing steps the gain discontinuously (up to 3 dB in one sample)
         # and clicks. With it, any restart becomes a ~6 ms glide.
+        if not _HAVE_SCIPY:
+            # No scipy: skip the one-pole smoothing and use the raw shaped
+            # envelope unsmoothed (rare restart-discontinuity click is a
+            # fair trade for not crashing the render path -- degrade
+            # gracefully contract).
+            self._duck_gain_z = float(g[-1])
+            return g[:, None]
         alpha = 1.0 - math.exp(-1.0 / (DUCK_SMOOTH_S * self.sr))
         # vectorised one-pole: y[i] = y[i-1] + alpha*(g[i]-y[i-1])
         y, self._duck_gain_z = _sp_signal.lfilter(

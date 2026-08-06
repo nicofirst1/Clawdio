@@ -4,8 +4,10 @@ sonifier.py; see sonifier.py for the module overview."""
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
+import threading
 
 # --------------------------------------------------------------------------
 # Constants
@@ -116,22 +118,31 @@ def _norm_bool(v, default: bool) -> bool:
 
 def _norm_volume(v, default: float) -> float:
     try:
-        return max(0.0, min(1.0, float(v)))
+        f = float(v)
+        if not math.isfinite(f):
+            return default
+        return max(0.0, min(1.0, f))
     except (TypeError, ValueError):
         return default
 
 
 def _norm_idle(v, default: float) -> float:
     try:
-        return max(0.0, float(v))
+        f = float(v)
+        if not math.isfinite(f):
+            return default
+        return max(0.0, f)
     except (TypeError, ValueError):
         return default
 
 
 def _norm_port(v, default: int) -> int:
     try:
-        p = int(v)
-    except (TypeError, ValueError):
+        f = float(v)
+        if not math.isfinite(f):
+            return default
+        p = int(f)
+    except (TypeError, ValueError, OverflowError):
         return default
     return p if 1 <= p <= 65535 else default
 
@@ -161,15 +172,25 @@ CONFIG_NORMALIZERS = {
 LIVE_KEYS = frozenset({"volume", "mute", "clicks", "chimes", "drone"})
 
 
+# Old pre-rename config dir (project was called "agent-sonifier"). Read-only
+# fallback when the new path has no file yet; writes always go to the new path.
+_OLD_CONFIG_PATH = os.path.expanduser("~/.config/agent-sonifier/config.json")
+
+_save_lock = threading.Lock()
+
+
 def config_path() -> str:
     return os.environ.get("SONIFIER_CONFIG") or os.path.expanduser(
-        "~/.config/agent-sonifier/config.json"
+        "~/.config/clawdio/config.json"
     )
 
 
 def _read_config_file() -> dict:
+    path = config_path()
+    if not os.path.exists(path) and os.path.exists(_OLD_CONFIG_PATH):
+        path = _OLD_CONFIG_PATH
     try:
-        with open(config_path(), "r") as f:
+        with open(path, "r") as f:
             data = json.load(f)
     except (OSError, ValueError):
         return {}
@@ -179,23 +200,24 @@ def _read_config_file() -> dict:
 def save_config(updates: dict) -> dict:
     """Merge normalized `updates` into the config file (atomic write).
     Returns the file's new contents. Unknown keys are ignored."""
-    path = config_path()
-    data = _read_config_file()
-    eff = load_config()
-    for k, v in updates.items():
-        norm = CONFIG_NORMALIZERS.get(k)
-        if norm is not None:
-            data[k] = norm(v, eff[k])
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-    return data
+    with _save_lock:
+        path = config_path()
+        data = _read_config_file()
+        eff = load_config()
+        for k, v in updates.items():
+            norm = CONFIG_NORMALIZERS.get(k)
+            if norm is not None:
+                data[k] = norm(v, eff[k])
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        return data
 
 
 def load_config() -> dict:

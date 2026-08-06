@@ -76,6 +76,8 @@ def run_render(events_path, out_path, seed=0):
             ev = obj.get("event")
             if t is None or ev is None:
                 continue
+            if not isinstance(ev, dict):
+                continue
             try:
                 t = float(t)
             except (TypeError, ValueError):
@@ -174,7 +176,7 @@ def _apply_live(state, cfg: dict) -> None:
 
 
 class _EventHTTPHandler(BaseHTTPRequestHandler):
-    state: EngineState = None  # set by server factory
+    state: GeigerTheme | AmbientTheme | None = None  # set by server factory
     boot_cfg: dict = None  # config the daemon started with (restart detection)
     restart_event: threading.Event = None  # set by POST /restart
     protocol_version = "HTTP/1.0"  # no keep-alive: don't pin a thread per client
@@ -330,7 +332,8 @@ def _udp_recv_loop(state, port, stop_event):
             data, _addr = sock.recvfrom(65536)
         except socket.timeout:
             continue
-        except OSError:
+        except OSError as e:
+            log.warning("UDP recv failed, ingress stopped: %s", e)
             break
         try:
             ev = json.loads(data.decode("utf-8"))
@@ -368,6 +371,8 @@ def run_live():
         sys.exit(1)
 
     cfg = load_config()
+    if os.path.exists(config_path()):
+        log.info("loaded config file: %s (overrides env vars)", config_path())
     state = _build_theme_state(cfg, seed=int(time.time()))
 
     stop_event = threading.Event()
