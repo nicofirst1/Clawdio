@@ -13,7 +13,7 @@ from config import (
     SAMPLE_RATE, BLOCKSIZE, TAU_ACTIVITY, MAX_CLICK_RATE, MAX_ACTIVE_CHIMES,
     CLASS_READ, TIMBRE,
 )
-from classify import classify, SessionTracker, SubagentPresenceTracker, SUBAGENT_PRESENCE_DECAY_S
+from classify import classify, SessionTracker, SubagentPresenceTracker
 from dsp import Slew, build_chime_bank, _mono_to_stereo, _make_click_grain
 from logging_setup import get_logger
 
