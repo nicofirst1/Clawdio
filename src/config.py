@@ -174,23 +174,30 @@ CONFIG_NORMALIZERS = {
 LIVE_KEYS = frozenset({"volume", "mute", "clicks", "chimes", "drone"})
 
 
-# Old pre-rename config dir (project was called "agent-sonifier"). Read-only
-# fallback when the new path has no file yet; writes always go to the new path.
-_OLD_CONFIG_PATH = os.path.expanduser("~/.config/agent-sonifier/config.json")
+# Pre-rename config dirs (project was "agent-sonifier", then "clawdio").
+# Read-only fallbacks when the new path has no file yet; writes always go to
+# the new path.
+_OLD_CONFIG_PATHS = (
+    os.path.expanduser("~/.config/clawdio/config.json"),
+    os.path.expanduser("~/.config/agent-sonifier/config.json"),
+)
 
 _save_lock = threading.Lock()
 
 
 def config_path() -> str:
     return os.environ.get("SONIFIER_CONFIG") or os.path.expanduser(
-        "~/.config/clawdio/config.json"
+        "~/.config/claudio/config.json"
     )
 
 
 def _read_config_file() -> dict:
     path = config_path()
-    if not os.path.exists(path) and os.path.exists(_OLD_CONFIG_PATH):
-        path = _OLD_CONFIG_PATH
+    if not os.path.exists(path):
+        for old_path in _OLD_CONFIG_PATHS:
+            if os.path.exists(old_path):
+                path = old_path
+                break
     try:
         with open(path, "r") as f:
             data = json.load(f)

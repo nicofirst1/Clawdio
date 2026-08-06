@@ -1,16 +1,16 @@
 name: Listening feedback
-description: Tell us what a Clawdio sound made you think was happening, and whether it was right.
+description: Tell us what a Claudio sound made you think was happening, and whether it was right.
 title: "[feedback] "
 labels: ["feedback"]
 body:
   - type: markdown
     attributes:
       value: |
-        This is the main way to report how Clawdio sounds, not just whether it works. There are no right or wrong answers here, we want your honest read of the sound.
+        This is the main way to report how Claudio sounds, not just whether it works. There are no right or wrong answers here, we want your honest read of the sound.
   - type: input
     id: version
     attributes:
-      label: Clawdio version
+      label: Claudio version
       description: panel footer or `python3 src/sonifier.py --check`
       placeholder: "2.4.0"
     validations:
@@ -65,7 +65,7 @@ body:
   - type: dropdown
     id: listened_for
     attributes:
-      label: How long you've listened to Clawdio
+      label: How long you've listened to Claudio
       options:
         - first session
         - hours

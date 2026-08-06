@@ -1,12 +1,12 @@
-# Clawdio
+# Claudio
 
-[![CI](https://github.com/nicofirst1/Clawdio/actions/workflows/ci.yml/badge.svg)](https://github.com/nicofirst1/Clawdio/actions/workflows/ci.yml)
+[![CI](https://github.com/nicofirst1/Claudio/actions/workflows/ci.yml/badge.svg)](https://github.com/nicofirst1/Claudio/actions/workflows/ci.yml)
 
 _Hear what a Claude Code session is doing without watching the terminal._
 
 ---
 
-Clawdio is a local audio daemon. Claude Code hook events (tool calls, subagents, failures, compaction, context pressure) arrive over UDP or HTTP on port 9753 and become a generative ambient soundscape: a pad that breathes, rain that thickens when busy, a wooden knock on failure, a descending chime on stop. Research prototype, formerly claude-geiger. Needs python3 + numpy + scipy; `sounddevice` only for live playback.
+Claudio is a local audio daemon. Claude Code hook events (tool calls, subagents, failures, compaction, context pressure) arrive over UDP or HTTP on port 9753 and become a generative ambient soundscape: a pad that breathes, rain that thickens when busy, a wooden knock on failure, a descending chime on stop. Research prototype, formerly claude-geiger. Needs python3 + numpy + scipy; `sounddevice` only for live playback.
 
 The sound layer is a swappable **theme** (`SONIFIER_THEME`; see [Themes](#themes)).
 
@@ -101,7 +101,7 @@ Every knob is an env var; a config file (written by the web panel) **overrides**
 | `SONIFIER_LOG_DIR`       | `$TMPDIR` or `/tmp`             | where autostart writes `sonifier.log`         |
 | `SONIFIER_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                      |
 | `SONIFIER_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)            |
-| `SONIFIER_CONFIG`        | `~/.config/clawdio/config.json` | override config file path                     |
+| `SONIFIER_CONFIG`        | `~/.config/claudio/config.json` | override config file path                     |
 
 Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 

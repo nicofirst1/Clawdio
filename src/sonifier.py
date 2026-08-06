@@ -8,7 +8,7 @@
 # [tool.uv]
 # # sounddevice is OPTIONAL: only required for live audio playback (not --render).
 # ///
-"""Clawdio sonifier.
+"""Claudio sonifier.
 
 Real-time audio sonification daemon for Claude Code. Turns Claude Code hook
 events into an audio soundscape describing the session. As of v2 the default

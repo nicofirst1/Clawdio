@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — idempotent installer for Clawdio.
+# install.sh — idempotent installer for Claudio.
 #
 # What it does:
 #   1. Checks for python3 and numpy (required), notes sounddevice as
@@ -107,7 +107,7 @@ else
     SETTINGS_DIR="$CLAUDE_DIR"
 fi
 
-say "== Clawdio installer =="
+say "== Claudio installer =="
 say "project dir: $SCRIPT_DIR"
 say "scope:       $SCOPE"
 if [ "$SCOPE" = "global" ]; then
@@ -132,7 +132,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
     fi
 
     SETTINGS="$SETTINGS_DIR/settings.json"
-    say "-- uninstalling Clawdio hooks ($SCOPE) --"
+    say "-- uninstalling Claudio hooks ($SCOPE) --"
 
     if [ ! -f "$SETTINGS" ]; then
         say "  $SETTINGS does not exist; nothing to do."
@@ -156,12 +156,12 @@ if [ "$UNINSTALL" -eq 1 ]; then
     ' "$SETTINGS")"
 
     if diff -q <(jq -S . "$SETTINGS") <(printf '%s' "$uninstalled" | jq -S .) >/dev/null 2>&1; then
-        say "  no Clawdio hook entries found in $SETTINGS; nothing to do."
+        say "  no Claudio hook entries found in $SETTINGS; nothing to do."
         exit 0
     fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
-        say "  [dry-run] would remove Clawdio hook entries from $SETTINGS (backed up first)"
+        say "  [dry-run] would remove Claudio hook entries from $SETTINGS (backed up first)"
         exit 0
     fi
 
@@ -170,7 +170,7 @@ if [ "$UNINSTALL" -eq 1 ]; then
     cp "$SETTINGS" "$backup"
     say "  backed up existing settings to $backup"
     printf '%s\n' "$uninstalled" >"$SETTINGS"
-    say "  removed Clawdio hook entries from $SETTINGS"
+    say "  removed Claudio hook entries from $SETTINGS"
     exit 0
 fi
 

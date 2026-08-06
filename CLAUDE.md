@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Clawdio (formerly claude-geiger): a local audio daemon (`src/sonifier.py`) that turns Claude Code hook events (UDP/HTTP JSON on port 9753) into a generative ambient soundscape, so a session is audible without watching the terminal. Research prototype. Requires python3 + numpy + scipy; `sounddevice` only for live playback (offline `--render` works without it).
+Claudio (formerly claude-geiger): a local audio daemon (`src/sonifier.py`) that turns Claude Code hook events (UDP/HTTP JSON on port 9753) into a generative ambient soundscape, so a session is audible without watching the terminal. Research prototype. Requires python3 + numpy + scipy; `sounddevice` only for live playback (offline `--render` works without it).
 
 ## Commands
 
