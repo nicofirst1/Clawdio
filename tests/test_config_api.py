@@ -157,6 +157,21 @@ def test_live_apply_reaches_ambient_rain_layer(cfg_file):
     assert state.volume == 0.7
 
 
+def test_rain_layer_tracks_theme_flag_without_snapshot():
+    # RainLayer.rain_enabled must read through to the theme's live flag, not
+    # cache a snapshot at construction -- distinguishes "reads live" (this
+    # test passes) from "cached a copy at __init__ time" (this test fails,
+    # since the cached copy would still read the constructor's original
+    # value). Bypasses _apply_live entirely: sets the theme-level flag
+    # directly to prove there is only one source of truth, not two kept in
+    # sync by a write-both-copies path.
+    from ambient import AmbientTheme
+    state = AmbientTheme(clicks_enabled=True)
+    assert state.rain.rain_enabled is True
+    state.rain_enabled = False
+    assert state.rain.rain_enabled is False
+
+
 def test_event_endpoint_still_works(server):
     _state, port, _ = server
     status, _data = _post(port, "/event", {"hook_event_name": "PreToolUse", "tool_name": "Read"})

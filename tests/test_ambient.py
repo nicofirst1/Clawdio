@@ -1696,3 +1696,20 @@ def test_room_fades_in_without_sessionstart():
     ]
     audio, _state = render_events(events, duration_s=10.0, seed=3)
     assert window_rms(audio, center_s=8.0, half_width_s=1.0) > 1e-4
+
+
+def test_restart_path_does_not_snap_fade_value():
+    # The restart-inferred session-start branch (no SessionStart seen, just
+    # a live session proven by an ordinary event -- POST /restart mid-
+    # session) must only retarget the fade curves, never snap .value/.tau:
+    # a room that's already mid-fade should keep fading from where it is,
+    # not blink to silent-then-back. Simulate "already up a while" by hand-
+    # advancing _session_fade past its constructor default before the
+    # restart-inferred branch fires.
+    state = make_ambient(seed=1)
+    state._session_fade.value = 0.4
+    state._session_fade.target = 0.4
+    state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read",
+                         "session_id": "s1"})
+    assert state._session_fade.value == 0.4, "value must not be snapped on the restart path"
+    assert state._session_fade.target == 1.0, "target must still be retargeted"
