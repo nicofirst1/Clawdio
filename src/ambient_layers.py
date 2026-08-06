@@ -827,17 +827,17 @@ NOTE_DIRECT_FRAC = 0.80     # notes are now mostly a direct signal, not 100% wet
 NOTE_REVERB_FRAC = 0.15     # secondary send, ~-6dB vs a fully-wet v2 note
 SUBBASS_CAL_DB = 18.0       # L5 sub-bass weather drone (same label-vs-mix
                             # calibration story as the stems)
-STEM_CAL_DB = 18.0
+STEM_CAL_DB = 18.0          # L4 subagent stems. The brief's "-32 dBFS" label is
+                            # relative to its own "-26 dBFS bed"; against this
+                            # mix's calibrated bed the raw -32 dB gain landed
+                            # 23 dB under the bed, i.e. inaudible -- and an
+                            # inaudible stem defeats the whole point of L4.
 STEM_DETUNE_CENTS = np.array([-9.0, 0.0, 9.0])
 STEM_LP_HZ = 520.0
 WHOOSH_CAL_DB = 30.0        # L2 bash-in-flight swell: the brief's -34 dBFS is
                             # again relative to its own -26 dBFS bed; raw, the
                             # swell measured 26 dB under this mix's 252 Hz band
-                            # (i.e. not there at all)          # L4 subagent stems. The brief's "-32 dBFS" label is
-                            # relative to its own "-26 dBFS bed"; against this
-                            # mix's calibrated bed the raw -32 dB gain landed
-                            # 23 dB under the bed, i.e. inaudible -- and an
-                            # inaudible stem defeats the whole point of L4.
+                            # (i.e. not there at all)
 
 # L1b "air": the continuous broadband bed. BRIEF section 2 only specifies a
 # pink rain bed that fades in with activity; measurement showed that without
@@ -1283,12 +1283,11 @@ class BedLayer:
             # than the legacy 6s/-33dB hold, which fell back to the ordinary
             # idle ladder (-30dB, same as "idle but recently working") after
             # only 6s -- the opposite of a distinct "waiting for you" state.
-            # Gated on last_event_t (not a hard `t <` timeout): a fixed timer
-            # that falls through to the LOUDER idle ladder is the same
-            # "gets louder while waiting" defect this cadence work fixed
-            # elsewhere, just delayed to t=SETTLED_HOLD_S post-Stop. Settled
-            # now holds for as long as the agent stays idle since Stop, and
-            # only exits when a genuinely new event advances last_event_t.
+            # Gated on last_event_t, not a hard `t <` timeout: a fixed timer
+            # that falls through to the LOUDER idle ladder is the same "gets
+            # louder while waiting" defect this cadence work fixed elsewhere,
+            # just delayed to t=SETTLED_HOLD_S post-Stop. This way settled
+            # holds until a genuinely new event advances last_event_t.
             return self.cfg.SETTLED_BED_DB, self.cfg.SETTLED_BED_TAU_S
         since_start = t - (session_start_t or 0.0)
         idle_dur = t - last_event_t
