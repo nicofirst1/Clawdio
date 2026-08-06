@@ -85,7 +85,7 @@ The daemon binds `0.0.0.0:SONIFIER_PORT` (default 9753) and speaks both HTTP and
 | `GET /health`   | LAN-open      | `{"ok": true, "activity": <float>}`.                                                                                                           |
 | `GET /config`   | loopback only | Current config, its file path, and which keys need a restart.                                                                                  |
 | `POST /config`  | loopback only | Merge a JSON object of config keys; live keys (volume, mute, clicks, chimes, drone) apply at once, the rest on restart.                        |
-| `POST /restart` | loopback only | Re-exec the daemon in place so restart-only keys (theme, port) take effect.                                                                    |
+| `POST /restart` | loopback only | Re-exec the daemon in place; restart-only keys (theme, port) and any code edits take effect.                                                   |
 | `GET /`         | loopback only | A static web control panel served from `web/`. Open `http://127.0.0.1:9753/` in a browser to see the config as a rack unit and change it live. |
 
 Config mutation and the panel are loopback-only because the daemon has no auth; only event ingress is open to the LAN.
