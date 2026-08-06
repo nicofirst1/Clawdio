@@ -575,5 +575,38 @@ def test_render_missing_file_exits_cleanly(tmp_path):
     assert ei.value.code == 2
 
 
+def test_geiger_subagent_register_survives_missing_start():
+    state = make_state(seed=29, clicks=True, chimes=False, drone=False)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({
+        "hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {},
+        "agent_id": "sub-1",
+    })
+    state.activity = 0.6
+    assert state.subagent_refcount == 0
+    _, sub_rate = sonifier._current_click_rates(state)
+    assert sub_rate > 0.0
+
+    # advance the virtual clock past the decay window with no further
+    # events from sub-1
+    state.t += sonifier.SUBAGENT_PRESENCE_DECAY_S + 2.0
+    # a no-op event on a different (or no) agent_id to trigger re-evaluation
+    state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {}})
+    _, sub_rate_after = sonifier._current_click_rates(state)
+    assert sub_rate_after == 0.0
+
+
+def test_geiger_subagent_register_legacy_start_stop_still_works():
+    state = make_state(seed=30, clicks=True, chimes=False, drone=False)
+    state.handle_event({"hook_event_name": "SessionStart"})
+    state.handle_event({"hook_event_name": "SubagentStart"})
+    state.activity = 0.6
+    _, sub_rate = sonifier._current_click_rates(state)
+    assert sub_rate > 0.0
+    state.handle_event({"hook_event_name": "SubagentStop"})
+    _, sub_rate_after = sonifier._current_click_rates(state)
+    assert sub_rate_after == 0.0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
