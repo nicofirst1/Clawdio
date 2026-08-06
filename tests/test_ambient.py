@@ -1683,3 +1683,16 @@ def test_first_session_gestures_stay_centered_while_second_lateralizes():
         f"A's cadence should stay ~centered: L={a_l:.5f} R={a_r:.5f} ratio={a_ratio:.3f}")
     assert b_l > b_r * 1.1, (
         f"B's cadence should be lateralized left: L={b_l:.5f} R={b_r:.5f}")
+
+
+def test_room_fades_in_without_sessionstart():
+    # POST /restart re-execs the daemon mid-session: the new process never
+    # sees a SessionStart, only the ongoing event stream. The room must fade
+    # in on the first event that proves a session is live, not stay silent
+    # (regression: silent daemon with activity spikes after a panel restart).
+    events = [
+        (0.5, {"hook_event_name": "PreToolUse", "tool_name": "Read", "session_id": "s1"}),
+        (1.0, {"hook_event_name": "PostToolUse", "tool_name": "Read", "session_id": "s1"}),
+    ]
+    audio, _state = render_events(events, duration_s=10.0, seed=3)
+    assert window_rms(audio, center_s=8.0, half_width_s=1.0) > 1e-4

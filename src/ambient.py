@@ -187,6 +187,19 @@ class AmbientTheme:
         was_live_before = self.sessions.live_count(self.t) > 0
         if name != "SessionStart":
             self.sessions.note(session_id, self.t)
+            if not was_live_before and name != "SessionEnd":
+                # A session is live that this process never saw start (POST
+                # /restart re-execs mid-session; SessionStart predates the
+                # boot), so treat the first event that proves it like a
+                # session start: clear the silence gates and fade the room
+                # in. Targets only, no value snap: a no-op when the room is
+                # already up, a clean re-fade from wherever it actually is.
+                self.session_started = True
+                self.session_start_t = self.t
+                self.session_ended = False
+                self.session_end_t = None
+                self._session_fade.target = 1.0
+                self._end_fade.target = 1.0
         # BRIEF-v2.5: this session's voice slot for its discrete gestures
         # (failure knock, Stop cadence, needs-you chime, ack note). Read once
         # here and baked into whatever gesture this event queues. slot_pan is
