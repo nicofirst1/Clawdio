@@ -172,6 +172,18 @@ def test_rain_layer_tracks_theme_flag_without_snapshot():
     assert state.rain.rain_enabled is False
 
 
+def test_live_apply_reaches_geiger_clicks_chimes():
+    # Regression: _LIVE_ATTRS is theme-agnostic, but the geiger theme reads
+    # clicks_enabled/chimes_enabled at render time (geiger.py:298,306), not
+    # ambient's rain_enabled/gestures_enabled. D's _LIVE_ATTRS collapse
+    # dropped the geiger names, making a live POST /config {clicks:false}
+    # (or chimes) a silent no-op on a geiger daemon. Keep both themes' names.
+    state = GeigerTheme(clicks_enabled=True, chimes_enabled=True)
+    io_modes._apply_live(state, {"clicks": False, "chimes": False})
+    assert state.clicks_enabled is False
+    assert state.chimes_enabled is False
+
+
 def test_event_endpoint_still_works(server):
     _state, port, _ = server
     status, _data = _post(port, "/event", {"hook_event_name": "PreToolUse", "tool_name": "Read"})

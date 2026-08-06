@@ -152,15 +152,21 @@ _STATIC_FILES = {
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
 
-# How each live config key maps onto theme-state attributes. Ambient renamed
-# clicks/chimes to rain/gestures at init; RainLayer.rain_enabled reads
-# through to the theme's flag (no separate copy to set), so a single
-# top-level attribute name per key is enough here.
+# How each live config key maps onto theme-state attributes. This table is
+# theme-AGNOSTIC -- both GeigerTheme and AmbientTheme flow through _apply_live
+# -- so each key lists every attribute name ANY theme reads at render time:
+# geiger reads clicks_enabled/chimes_enabled (geiger.py), ambient reads
+# rain_enabled/gestures_enabled. _set_attr_path's hasattr guard sets whichever
+# the live theme actually has and skips the rest, so listing both names is
+# correct, not redundant -- dropping the geiger names silently no-ops a live
+# POST /config toggle on a geiger daemon. Do NOT add "rain.rain_enabled":
+# RainLayer.rain_enabled is now a read-through property (no setter) that reads
+# the theme flag set here, so setattr on it would raise.
 _LIVE_ATTRS = {
     "volume": ("volume",),
     "mute": ("mute",),
-    "clicks": ("rain_enabled",),
-    "chimes": ("gestures_enabled",),
+    "clicks": ("clicks_enabled", "rain_enabled"),
+    "chimes": ("chimes_enabled", "gestures_enabled"),
     "drone": ("drone_enabled",),
 }
 
