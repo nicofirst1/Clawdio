@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind listening test — round 6</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  .clip { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+  .clip h2 { margin: 0 0 .5rem; }
+  audio { width: 100%; margin-bottom: .75rem; }
+  .q { margin: .75rem 0; }
+  .q .lbl { display: block; font-weight: 600; margin-bottom: .3rem; }
+  .opts { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .opts label { cursor: pointer; font-weight: 400; }
+  fieldset { border: none; padding: 0; margin: 1rem 0; }
+  #result { white-space: pre-wrap; background: #f6f6f6; border-radius: 8px; padding: 1rem; display: none; font-family: monospace; }
+  button { font-size: 1rem; padding: .5rem 1.2rem; border-radius: 6px; border: 1px solid #888; background: #fff; cursor: pointer; }
+  input[type=text] { font-size: 1rem; padding: .3rem .5rem; }
+</style>
+</head>
+<body>
+<h1>Blind listening test — round 6</h1>
+<p>Six ~25-35s clips. Each one is <strong>two coding sessions running at
+   once</strong> in the same room — headphones or stereo speakers strongly
+   recommended, this round is about left/right. Listen to each one
+   <strong>once</strong>, at the volume you'd actually use while working, and
+   answer both questions below it. Don't rewind or overthink it — the whole
+   point is what you can tell from a single listen. If you genuinely can't
+   tell, say so — "can't tell" is a valid, expected answer for some of these
+   clips.</p>
+<p>This round is about <strong>comprehension</strong>, not preference — there's
+   no wrong answer to have a strong opinion about, just tell us what you
+   actually heard.</p>
+
+<div class="clip" data-id="M">
+  <h2>Clip M</h2>
+  <audio controls preload="none" src="round6_M.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+<div class="clip" data-id="N">
+  <h2>Clip N</h2>
+  <audio controls preload="none" src="round6_N.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+<div class="clip" data-id="O">
+  <h2>Clip O</h2>
+  <audio controls preload="none" src="round6_O.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+<div class="clip" data-id="P">
+  <h2>Clip P</h2>
+  <audio controls preload="none" src="round6_P.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+<div class="clip" data-id="Q">
+  <h2>Clip Q</h2>
+  <audio controls preload="none" src="round6_Q.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+<div class="clip" data-id="R">
+  <h2>Clip R</h2>
+  <audio controls preload="none" src="round6_R.mp3"></audio>
+  <div class="q">
+    <span class="lbl">Which side finished (played a "wrapping up" ending)?</span>
+    <div class="opts" data-q="finished"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">Which side needs you (played a "come look" chime)?</span>
+    <div class="opts" data-q="needsyou"></div>
+  </div>
+  <div class="q">
+    <span class="lbl">How confident are you?</span>
+    <div class="opts" data-q="confidence"></div>
+  </div>
+</div>
+
+<fieldset>
+  <p><strong>Any comments?</strong> (what gave it away, what was ambiguous,
+    whether the pitch of a gesture felt like "a different sound" rather than
+    "the same sound, other speaker" — a sentence or two is plenty)<br>
+    <input id="comment" size="60" style="width:100%"></p>
+</fieldset>
+
+<button onclick="report()">Show my answers</button>
+<p id="result"></p>
+
+<script>
+const SIDES = ["Left", "Right", "Can't tell"];
+const CONFIDENCE = ["Not sure", "Fairly sure", "Very sure"];
+document.querySelectorAll('.clip').forEach(clip => {
+  const id = clip.dataset.id;
+  clip.querySelectorAll('.opts').forEach(div => {
+    const q = div.dataset.q;
+    const choices = q === 'confidence' ? CONFIDENCE : SIDES;
+    choices.forEach(choice => {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="radio" name="${id}-${q}" value="${choice}"> ${choice}`;
+      div.appendChild(l);
+    });
+  });
+});
+function val(name) {
+  const r = document.querySelector(`input[name="${name}"]:checked`);
+  return r ? r.value : '-';
+}
+function report() {
+  let out = 'BLIND TEST RESULTS (round 6)\n';
+  for (const id of ['M', 'N', 'O', 'P', 'Q', 'R'])
+    out += `${id}: finished=${val(id + '-finished')} needsyou=${val(id + '-needsyou')} confidence=${val(id + '-confidence')}\n`;
+  out += `comment: ${document.getElementById('comment').value || '-'}`;
+  const p = document.getElementById('result');
+  p.textContent = out;
+  p.style.display = 'block';
+}
+</script>
+</body>
+</html>

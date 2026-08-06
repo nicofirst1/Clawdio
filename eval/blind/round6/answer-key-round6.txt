@@ -1,0 +1,6 @@
+M = control_both_finish (arm: full; question: finished; ground truth: Can't tell)
+N = needsyou_panonly (arm: pan-only; question: needsyou; ground truth: Left)
+O = control_single (arm: n/a; question: both; ground truth: Can't tell)
+P = finished_panonly (arm: pan-only; question: finished; ground truth: Left)
+Q = finished_full (arm: full; question: finished; ground truth: Left)
+R = needsyou_full (arm: full; question: needsyou; ground truth: Left)

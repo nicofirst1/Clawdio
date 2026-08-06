@@ -1,0 +1,23 @@
+{"t": 0.0, "event": {"hook_event_name": "SessionStart", "session_id": "round6-session-A"}}
+{"t": 0.5, "event": {"hook_event_name": "UserPromptSubmit", "session_id": "round6-session-A", "prompt": "work alone"}}
+{"t": 2.0, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 2.4, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Read"}}
+{"t": 4.2, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Grep", "tool_input": {"file_path": "z.py"}}}
+{"t": 4.6, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Grep"}}
+{"t": 6.0, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 6.4, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Read"}}
+{"t": 8.0, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Write", "tool_input": {"file_path": "z.py"}}}
+{"t": 8.4, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Write"}}
+{"t": 9.6, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Edit", "tool_input": {"file_path": "z.py"}}}
+{"t": 10.0, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Edit"}}
+{"t": 11.0, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Write", "tool_input": {"file_path": "z.py"}}}
+{"t": 11.4, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Write"}}
+{"t": 12.5, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 12.9, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Read"}}
+{"t": 14.7, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Grep", "tool_input": {"file_path": "z.py"}}}
+{"t": 15.1, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Grep"}}
+{"t": 16.5, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Read", "tool_input": {"file_path": "z.py"}}}
+{"t": 16.9, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Read"}}
+{"t": 18.5, "event": {"hook_event_name": "PreToolUse", "session_id": "round6-session-A", "tool_name": "Write", "tool_input": {"file_path": "z.py"}}}
+{"t": 18.9, "event": {"hook_event_name": "PostToolUse", "session_id": "round6-session-A", "tool_name": "Write"}}
+{"t": 22.0, "event": {"hook_event_name": "Stop", "session_id": "round6-session-A"}}
