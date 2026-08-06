@@ -140,7 +140,7 @@ def test_static_ui_served(server):
     _state, port, _ = server
     status, body = _get(port, "/")
     assert status == 200
-    assert b"Agent" in body and b"Sonifier" in body.replace(b"&nbsp;", b" ")
+    assert b"Claudio" in body
     assert _get(port, "/app.js")[0] == 200
     assert _get(port, "/style.css")[0] == 200
 
