@@ -290,10 +290,17 @@ function renderSessionChips(items, prevN) {
   return nextN;
 }
 
-function renderPresence(containerId, countId, items, prevN, small) {
-  const container = $(containerId);
+// Agent chips are named (agent_type, or a short-id fallback) and colored to
+// match their PARENT session, not their own idx -- an agent is that session's
+// helper, not a peer session, so it shouldn't get an unrelated color. sessions
+// is the latest /events sessions list, used to look up the parent's color +
+// "S#" tag by short session id; a parent that's no longer live falls back to
+// a muted style instead of a stale/misleading color.
+function renderAgentChips(items, prevN, sessions) {
+  const container = $("agents");
   const seen = new Set();
   const nextN = new Map();
+  const byShortId = new Map(sessions.map((s) => [s.id, s]));
 
   for (const item of items) {
     const key = chipKey(item.idx, item.id);
@@ -303,20 +310,25 @@ function renderPresence(containerId, countId, items, prevN, small) {
     let chip = container.querySelector(`[data-key="${CSS.escape(key)}"]`);
     if (!chip) {
       chip = document.createElement("span");
-      chip.className = small ? "chip chip-sm" : "chip";
+      chip.className = "chip chip-agent";
       chip.dataset.key = key;
-      chip.style.setProperty("--chip-color", idxColor(item.idx));
       container.appendChild(chip);
     }
     chip.classList.remove("fading");
-    chip.textContent = small ? "" : `S${item.idx} ${item.id}`;
-    chip.title = `${item.id} (n=${item.n})`;
+
+    const parent = byShortId.get(item.session);
+    chip.classList.toggle("chip-orphan", !parent);
+    if (parent) chip.style.setProperty("--chip-color", idxColor(parent.idx));
+
+    const parentTag = parent ? `S${parent.idx}` : (item.session || "?");
+    chip.textContent = `${item.name} · ${parentTag}`;
+    chip.title = `${item.name} (agent ${item.id}, n=${item.n}) — parent ${item.session || "unknown"}`;
 
     const prev = prevN.get(key);
     if (prev !== undefined && item.n > prev) flash(chip);
   }
 
-  // Remove chips for sessions/agents that dropped out of the live list.
+  // Remove chips for agents that dropped out of the live list.
   for (const chip of [...container.children]) {
     if (!seen.has(chip.dataset.key)) {
       chip.classList.add("fading");
@@ -324,7 +336,7 @@ function renderPresence(containerId, countId, items, prevN, small) {
     }
   }
 
-  $(countId).textContent = items.length;
+  $("agents-count").textContent = items.length;
   return nextN;
 }
 
@@ -407,6 +419,17 @@ async function poll() {
     const res = await fetch(`/events?since=${since}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
+
+    // The daemon's ids restart from 0 on every process restart (curl /restart
+    // re-execs it, wiping the in-memory EventLog). If our `since` cursor is
+    // now ahead of the server's seq, we're polling a dead cursor against a
+    // fresher/smaller id space -- since > any future id, so we'd never see
+    // another row again. Detect that and refetch from scratch.
+    if (data.seq < since) {
+      since = 0;
+      return poll();
+    }
+
     const events = data.events ?? [];
     if (events.length) since = events[events.length - 1].id;
     bufferEvents(events);
@@ -414,7 +437,7 @@ async function poll() {
 
     renderCounts(filteredCounts(data));
     prevSessionN = renderSessionChips(data.sessions ?? [], prevSessionN);
-    prevAgentN = renderPresence("agents", "agents-count", data.agents ?? [], prevAgentN, true);
+    prevAgentN = renderAgentChips(data.agents ?? [], prevAgentN, data.sessions ?? []);
 
     setStatus(true, "online");
   } catch {

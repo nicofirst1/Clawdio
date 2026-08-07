@@ -28,8 +28,6 @@ _STATIC_KIND = {
     "Stop": ("done", "done"),
     "Notification": ("attention", "needs you"),
     "PermissionRequest": ("attention", "needs you"),
-    "SubagentStart": ("subagent", "subagent"),
-    "SubagentStop": ("subagent", "subagent"),
     "UserPromptSubmit": ("prompt", "prompt"),
     "PreCompact": ("compact", "compact"),
     "SessionStart": ("session", "session start"),
@@ -44,6 +42,16 @@ _NO_ROW = {"PostToolUse", "ContextPressure"}
 
 def _truncate(s: str, n: int = 64) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def _agent_name(ev) -> str:
+    """Human name for a subagent event: the hook-supplied agent_type, or a
+    short id fallback so a row is still identifiable when it's absent."""
+    agent_type = ev.get("agent_type")
+    if isinstance(agent_type, str) and agent_type:
+        return agent_type
+    aid = ev.get("agent_id")
+    return str(aid)[:6] if aid else ""
 
 
 def _detail(tool_input) -> str:
@@ -87,6 +95,11 @@ def event_record(ev) -> dict | None:
     if name == "PostToolUseFailure":
         label = tool_name if isinstance(tool_name, str) and tool_name else "fail"
         return {"kind": "fail", "label": label, "detail": "failed", "session": session}
+    if name in ("SubagentStart", "SubagentStop"):
+        verb = "start" if name == "SubagentStart" else "stop"
+        agent_name = _agent_name(ev)
+        detail = f"{verb} · {agent_name}" if agent_name else verb
+        return {"kind": "subagent", "label": "subagent", "detail": detail, "session": session}
     if name in _STATIC_KIND:
         kind, label = _STATIC_KIND[name]
         return {"kind": kind, "label": label, "detail": "", "session": session}
@@ -121,7 +134,7 @@ class EventLog:
         entry["last"] = now
         entry["counts"][name] += 1
 
-    def _live(self, table, decay_s, now, with_counts=False):
+    def _live(self, table, decay_s, now, with_counts=False, with_name=False):
         expired = [k for k, e in table.items() if now - e["last"] > decay_s]
         for k in expired:
             del table[k]
@@ -131,6 +144,9 @@ class EventLog:
             entry = {"id": str(k)[:6], "idx": e["idx"], "n": e["n"]}
             if with_counts:
                 entry["counts"] = dict(e["counts"])
+            if with_name:
+                entry["name"] = e.get("type") or str(k)[:6]
+                entry["session"] = e.get("session", "")
             out.append(entry)
         return out
 
@@ -165,6 +181,12 @@ class EventLog:
                     self._agents.pop(aid, None)
             elif aid:
                 self._touch(self._agents, aid, now, "_next_agent_idx", name)
+                entry = self._agents[aid]
+                agent_type = ev.get("agent_type")
+                if isinstance(agent_type, str) and agent_type:  # never clobber with empty
+                    entry["type"] = agent_type
+                if sid:
+                    entry["session"] = str(sid)[:6]
 
             rec = event_record(ev)
             if rec is not None:
@@ -200,7 +222,7 @@ class EventLog:
                 "seq": self._seq,
                 "counts": dict(self._counts),
                 "sessions": self._live(self._sessions, SESSION_EXPIRY_S, now, with_counts=True),
-                "agents": self._live(self._agents, SUBAGENT_PRESENCE_DECAY_S, now),
+                "agents": self._live(self._agents, SUBAGENT_PRESENCE_DECAY_S, now, with_name=True),
             }
 
 
@@ -264,4 +286,31 @@ if __name__ == "__main__":
         s["id"] == "s2"[:6]
         for s in log.snapshot(now=SESSION_EXPIRY_S + 1)["sessions"]
     )
+
+    # subagent name + parent session: agent_type rides the wire -> named entry
+    # bound to the parent session_id; SubagentStart/Stop get distinct log rows.
+    log.record({"hook_event_name": "SubagentStart", "agent_id": "a9", "agent_type": "executor",
+                "session_id": "s9"})
+    agents = log.snapshot()["agents"]
+    a9 = next(a for a in agents if a["id"] == "a9"[:6])
+    assert a9["name"] == "executor"
+    assert a9["session"] == "s9"[:6]
+    log.record({"hook_event_name": "SubagentStop", "agent_id": "a9", "agent_type": "executor",
+                "session_id": "s9"})
+    assert not any(a["id"] == "a9"[:6] for a in log.snapshot()["agents"])
+
+    # no agent_type on the wire -> name falls back to the short agent id.
+    log.record({"hook_event_name": "PreToolUse", "agent_id": "a10"})
+    a10 = next(a for a in log.snapshot()["agents"] if a["id"] == "a10"[:6])
+    assert a10["name"] == "a10"[:6]
+    assert "counts" not in a10
+
+    start = event_record({"hook_event_name": "SubagentStart", "agent_id": "a9",
+                           "agent_type": "executor"})
+    assert start == {"kind": "subagent", "label": "subagent", "detail": "start · executor", "session": ""}
+    stop = event_record({"hook_event_name": "SubagentStop", "agent_id": "a9"})
+    assert stop["detail"] == "stop · a9"
+    bare_start = event_record({"hook_event_name": "SubagentStart"})
+    assert bare_start["detail"] == "start"
+
     print("event_log self-check ok")
