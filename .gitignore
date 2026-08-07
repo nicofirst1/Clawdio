@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Rendered audio is regenerable (--render + ffmpeg, eval/make_clips.py) and
+# too big for git; the .jsonl event fixtures CI/tools depend on stay tracked.
+*.mp3
+*.wav

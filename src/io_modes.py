@@ -152,14 +152,20 @@ _STATIC_FILES = {
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
 
-# How each live config key maps onto theme-state attributes. Ambient renamed
-# clicks/chimes to rain/gestures at init, and RainLayer keeps its own copy of
-# rain_enabled (read at render time), so every existing candidate gets set --
-# dotted paths reach into layers.
+# How each live config key maps onto theme-state attributes. This table is
+# theme-AGNOSTIC -- both GeigerTheme and AmbientTheme flow through _apply_live
+# -- so each key lists every attribute name ANY theme reads at render time:
+# geiger reads clicks_enabled/chimes_enabled (geiger.py), ambient reads
+# rain_enabled/gestures_enabled. _set_attr_path's hasattr guard sets whichever
+# the live theme actually has and skips the rest, so listing both names is
+# correct, not redundant -- dropping the geiger names silently no-ops a live
+# POST /config toggle on a geiger daemon. Do NOT add "rain.rain_enabled":
+# RainLayer.rain_enabled is now a read-through property (no setter) that reads
+# the theme flag set here, so setattr on it would raise.
 _LIVE_ATTRS = {
     "volume": ("volume",),
     "mute": ("mute",),
-    "clicks": ("clicks_enabled", "rain_enabled", "rain.rain_enabled"),
+    "clicks": ("clicks_enabled", "rain_enabled"),
     "chimes": ("chimes_enabled", "gestures_enabled"),
     "drone": ("drone_enabled",),
 }
@@ -358,6 +364,21 @@ def _udp_recv_loop(state, port, stop_event):
     sock.close()
 
 
+def _should_idle_exit(state, idle_exit_s: float) -> bool:
+    """True when run_live's poll loop should exit for idleness: no event
+    for longer than idle_exit_s AND the SessionTracker considers zero
+    sessions live. A tracked-live session pins the daemon open even
+    through a long quiet stretch inside it (multi-session design intent,
+    see SessionTracker's docstring); genuine all-idle -- nothing ever
+    connected, or every session's SESSION_EXPIRY_S window lapsed -- still
+    exits on schedule, since live_count() is 0 in that case too."""
+    if state.sessions.live_count(state.t) != 0:
+        return False
+    if state.last_event_t > 0:
+        return state.t - state.last_event_t > idle_exit_s
+    return state.t > idle_exit_s
+
+
 def run_live():
     # Detach from the launching terminal's session/process group. The
     # autostart hook backgrounds us with nohup (blocks SIGHUP) but when the
@@ -436,10 +457,7 @@ def run_live():
                 if restart_event.is_set():
                     log.info("restart requested via /restart")
                     break
-                if state.t - state.last_event_t > idle_exit_s and state.last_event_t > 0:
-                    log.info("idle timeout reached, exiting")
-                    break
-                if state.last_event_t == 0.0 and state.t > idle_exit_s:
+                if _should_idle_exit(state, idle_exit_s):
                     log.info("idle timeout reached, exiting")
                     break
     except KeyboardInterrupt:

@@ -19,10 +19,30 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
-import sonifier  # noqa: E402
+from ambient import AmbientTheme  # noqa: E402
+# MIDLAYER_FREQS: only referenced via monkeypatch.setattr(..., "MIDLAYER_FREQS", ...)
+# below (a string attribute name pyflakes can't trace back to this import).
+from ambient_layers import (  # noqa: E402,F401
+    AMBIENT_DRY_GAIN, AMBIENT_MASTER_HEADROOM_DB, AmbientConfig, BED_CAL_DB,
+    BURST_COALESCE_MAX_DB, BURST_COALESCE_STEP_DB, DROP_AMP_SPREAD_DB,
+    DROP_CAL_DB, DROP_MIN_GAP_S, DROP_PAN_LIMIT, DROP_TIMBRES, DUCK_DEPTH_DB,
+    Freeverb, KNOCK_EMBED_CAP_DB, MAX_AMBIENT_VOICES, MAX_PENDING_VOICES,
+    MAX_VOICE_TAILS, MIDLAYER_FREQS, NOTE_EMBED_CAP_DB, NOTE_PAN_LIMIT,
+    ROOT_C3, ROOT_G3, SETTLED_BED_DB, SUBAGENT_PRESENCE_DECAY_S,
+    _build_cadence_notes_v24, _build_drop_bank, _db_to_lin, _dc_blocker,
+    _midi_hz, _nearest_pool_note, _render_knock, _render_one_drop_variant,
+    _voice_pool_add,
+)  # noqa: E402
+from classify import SessionTracker  # noqa: E402
+from config import (  # noqa: E402
+    BLOCKSIZE, CLASS_READ, CLASS_WRITE, SAMPLE_RATE, THEME_AMBIENT,
+    THEME_GEIGER, load_config,
+)
+from geiger import EngineState, GeigerTheme, render_block  # noqa: E402
+from io_modes import run_render  # noqa: E402
 
-SR = sonifier.SAMPLE_RATE
-BLOCK = sonifier.BLOCKSIZE
+SR = SAMPLE_RATE
+BLOCK = BLOCKSIZE
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +59,7 @@ def _pin_ambient_theme(monkeypatch):
 # --------------------------------------------------------------------------
 
 def make_ambient(seed=0, volume=1.0, **kw):
-    return sonifier.AmbientTheme(sr=SR, volume=volume, mute=False, quiet=True, seed=seed, **kw)
+    return AmbientTheme(sr=SR, volume=volume, mute=False, quiet=True, seed=seed, **kw)
 
 
 def render_events(events, duration_s, seed=0, **kw):
@@ -57,7 +77,7 @@ def render_events(events, duration_s, seed=0, **kw):
         while ev_idx < len(events) and events[ev_idx][0] < block_end_t:
             state.handle_event(events[ev_idx][1])
             ev_idx += 1
-        out[b * BLOCK:(b + 1) * BLOCK, :] = sonifier.render_block(state, BLOCK)
+        out[b * BLOCK:(b + 1) * BLOCK, :] = render_block(state, BLOCK)
         block_start_t = block_end_t
     return out, state
 
@@ -129,12 +149,12 @@ def test_ambient_is_default_theme(monkeypatch):
     # the only test that deliberately unsets the module-wide pin: with no
     # SONIFIER_THEME in the environment the default must be ambient.
     monkeypatch.delenv("SONIFIER_THEME", raising=False)
-    cfg = sonifier.load_config()
-    assert cfg["theme"] == sonifier.THEME_AMBIENT
+    cfg = load_config()
+    assert cfg["theme"] == THEME_AMBIENT
     monkeypatch.setenv("SONIFIER_THEME", "geiger")
-    assert sonifier.load_config()["theme"] == sonifier.THEME_GEIGER
+    assert load_config()["theme"] == THEME_GEIGER
     monkeypatch.setenv("SONIFIER_THEME", "nonsense-value")
-    assert sonifier.load_config()["theme"] == sonifier.THEME_AMBIENT
+    assert load_config()["theme"] == THEME_AMBIENT
 
 
 def test_ambient_theme_has_small_interface():
@@ -142,13 +162,13 @@ def test_ambient_theme_has_small_interface():
     assert hasattr(state, "handle_event")
     assert hasattr(state, "set_pressure")
     assert hasattr(state, "render_block")
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert block.shape == (BLOCK, 2)
     assert block.dtype == np.float32
 
 
 def test_geiger_theme_alias_still_works():
-    assert sonifier.GeigerTheme is sonifier.EngineState
+    assert GeigerTheme is EngineState
 
 
 def test_run_render_survives_non_dict_final_event(tmp_path):
@@ -161,7 +181,7 @@ def test_run_render_survives_non_dict_final_event(tmp_path):
         '{"t": 2.0, "event": "x"}\n'
     )
     out_path = tmp_path / "out.wav"
-    sonifier.run_render(str(events_path), str(out_path), seed=0)
+    run_render(str(events_path), str(out_path), seed=0)
     assert out_path.exists() and out_path.stat().st_size > 0
 
 
@@ -209,7 +229,7 @@ def test_idle_but_alive_is_not_digital_silence():
 
 def test_no_events_before_session_start_is_silent():
     state = make_ambient(seed=4)
-    chunks = [sonifier.render_block(state, BLOCK) for _ in range(int(3.0 * SR / BLOCK))]
+    chunks = [render_block(state, BLOCK) for _ in range(int(3.0 * SR / BLOCK))]
     audio = np.concatenate(chunks, axis=0)
     assert np.max(np.abs(audio)) == 0.0
 
@@ -298,7 +318,7 @@ def test_activity_high_vs_low_render_differ():
         chunks = []
         for _ in range(n_blocks):
             state.activity = activity
-            chunks.append(sonifier.render_block(state, BLOCK))
+            chunks.append(render_block(state, BLOCK))
         return np.concatenate(chunks, axis=0), dispatched[0]
 
     low, low_dispatched = render_constant_activity(0.02, seed=7, count_dispatches=True)
@@ -348,7 +368,7 @@ def test_no_nan_full_demo_render(tmp_path):
     old = os.environ.get("SONIFIER_THEME")
     os.environ["SONIFIER_THEME"] = "ambient"
     try:
-        sonifier.run_render(events_path, str(out_path), seed=11)
+        run_render(events_path, str(out_path), seed=11)
     finally:
         if old is None:
             os.environ.pop("SONIFIER_THEME", None)
@@ -368,7 +388,7 @@ def test_render_block_never_raises_on_broken_state():
     state.handle_event({"hook_event_name": "SessionStart"})
     state.activity = float("nan")
     state.fill = float("nan")
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert block.shape == (BLOCK, 2)
     assert np.all(np.isfinite(block))
 
@@ -384,7 +404,7 @@ def test_malformed_event_ignored_no_exception():
     for bad in bad_inputs:
         state.handle_event(bad)
     state.handle_event({"hook_event_name": "SessionStart"})
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert block.shape == (BLOCK, 2)
     assert np.all(np.isfinite(block))
 
@@ -404,8 +424,8 @@ def test_deterministic_given_seed(tmp_path):
     old = os.environ.get("SONIFIER_THEME")
     os.environ["SONIFIER_THEME"] = "ambient"
     try:
-        sonifier.run_render(str(events_path), str(a), seed=9)
-        sonifier.run_render(str(events_path), str(b), seed=9)
+        run_render(str(events_path), str(a), seed=9)
+        run_render(str(events_path), str(b), seed=9)
     finally:
         if old is None:
             os.environ.pop("SONIFIER_THEME", None)
@@ -439,7 +459,7 @@ def test_active_render_spectral_centroid_lenient():
 # --------------------------------------------------------------------------
 
 def test_freeverb_impulse_response_decays_and_stays_finite():
-    fv = sonifier.Freeverb(SR)
+    fv = Freeverb(SR)
     n_blocks = int(math.ceil(10.0 * SR / BLOCK))
     out = []
     impulse_block = np.zeros(BLOCK)
@@ -474,9 +494,9 @@ def test_geiger_theme_still_selectable_via_env(tmp_path, monkeypatch):
         ]) + "\n")
     out_path = tmp_path / "geiger.wav"
     monkeypatch.setenv("SONIFIER_THEME", "geiger")
-    cfg = sonifier.load_config()
-    assert cfg["theme"] == sonifier.THEME_GEIGER
-    sonifier.run_render(str(events_path), str(out_path), seed=1)
+    cfg = load_config()
+    assert cfg["theme"] == THEME_GEIGER
+    run_render(str(events_path), str(out_path), seed=1)
     assert out_path.exists()
     assert out_path.stat().st_size > 44
 
@@ -494,11 +514,11 @@ def test_voice_pool_cap_is_actually_enforced():
     pool = []
     for i in range(500):
         buf = np.zeros((int(0.5 * SR), 2))
-        sonifier._voice_pool_add(pool, {"buf": buf, "pos": 0, "bus": "reverb"}, SR)
-        assert len(pool) <= sonifier.MAX_AMBIENT_VOICES + sonifier.MAX_VOICE_TAILS, (
+        _voice_pool_add(pool, {"buf": buf, "pos": 0, "bus": "reverb"}, SR)
+        assert len(pool) <= MAX_AMBIENT_VOICES + MAX_VOICE_TAILS, (
             f"voice pool grew to {len(pool)} at add #{i}")
     live = [v for v in pool if not v.get("stolen")]
-    assert len(live) <= sonifier.MAX_AMBIENT_VOICES
+    assert len(live) <= MAX_AMBIENT_VOICES
 
 
 def test_ingress_handoff_is_bounded_and_append_only():
@@ -511,11 +531,11 @@ def test_ingress_handoff_is_bounded_and_append_only():
     for _ in range(2000):
         state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Write",
                             "tool_input": {"file_path": "a.py"}})
-    assert len(state._pending) <= sonifier.MAX_PENDING_VOICES
+    assert len(state._pending) <= MAX_PENDING_VOICES
     assert state.voices == [] or all("buf" in v for v in state.voices)
-    block = sonifier.render_block(state, BLOCK)
+    block = render_block(state, BLOCK)
     assert np.all(np.isfinite(block))
-    assert len(state.voices) <= sonifier.MAX_AMBIENT_VOICES + sonifier.MAX_VOICE_TAILS
+    assert len(state.voices) <= MAX_AMBIENT_VOICES + MAX_VOICE_TAILS
 
 
 def test_dc_blocker_lfilter_matches_reference_recursion():
@@ -540,7 +560,7 @@ def test_dc_blocker_lfilter_matches_reference_recursion():
     sx, sy = np.zeros(2), np.zeros(2)
     for i in range(0, len(x), BLOCK):
         blk = x[i:i + BLOCK]
-        got[i:i + BLOCK], sx, sy = sonifier._dc_blocker(blk, sx, sy, r)
+        got[i:i + BLOCK], sx, sy = _dc_blocker(blk, sx, sy, r)
     assert np.allclose(got, ref_y, atol=1e-12)
     assert np.allclose(sx, rx) and np.allclose(sy, ry)
 
@@ -583,22 +603,22 @@ def test_bed_recolorings_are_live_not_dead_state():
     state = make_ambient(seed=23)
     state.handle_event({"hook_event_name": "SessionStart"})
     for _ in range(200):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     assert abs(state.bed.bed_root_ratio.value - 1.0) < 1e-6
     state.handle_event({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
     for _ in range(int(6.0 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     assert state.bed.bed_root_ratio.value < 0.92, "bed root must glide C -> A on failure"
     state.handle_event({"hook_event_name": "Stop"})
     for _ in range(int(12.0 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     assert state.bed.bed_root_ratio.value > 0.98, "bed root must return to C after Stop"
 
     state2 = make_ambient(seed=24)
     state2.handle_event({"hook_event_name": "SessionStart"})
     state2.handle_event({"hook_event_name": "Notification"})
     for _ in range(int(1.5 * SR / BLOCK)):
-        sonifier.render_block(state2, BLOCK)
+        render_block(state2, BLOCK)
     assert state2.bed.sus2_amt.value > 0.2, "Notification must engage the sus2 partial"
 
 
@@ -617,8 +637,8 @@ def test_subagent_start_at_depth_3_stays_sane():
     assert state.stem.stem2_gain.target == 1.0
     # must render without error at depth 3
     for _ in range(50):
-        sonifier.render_block(state, BLOCK)
-    assert np.all(np.isfinite(sonifier.render_block(state, BLOCK)))
+        render_block(state, BLOCK)
+    assert np.all(np.isfinite(render_block(state, BLOCK)))
     # unwinding one Stop must not drop below the >=2 stem2 activation
     state.handle_event({"hook_event_name": "SubagentStop"})
     assert state.stem.subagent_refcount == 2
@@ -643,8 +663,8 @@ def test_subagent_stem_survives_missing_start():
     assert state.stem.stem1_gain.target == 1.0
 
     # advance the virtual clock via render_block, well past the decay window
-    for _ in range(int(math.ceil((sonifier.SUBAGENT_PRESENCE_DECAY_S + 2.0) * SR / BLOCK))):
-        sonifier.render_block(state, BLOCK)
+    for _ in range(int(math.ceil((SUBAGENT_PRESENCE_DECAY_S + 2.0) * SR / BLOCK))):
+        render_block(state, BLOCK)
 
     # a no-op event to trigger presence pruning/re-evaluation
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {}})
@@ -800,7 +820,7 @@ def test_session_end_fade_is_long_then_truly_silent(tmp_path):
         (4.0, {"hook_event_name": "SessionEnd"}),
     ]) + "\n")
     out = tmp_path / "end.wav"
-    sonifier.run_render(str(events_path), str(out), seed=28)
+    run_render(str(events_path), str(out), seed=28)
     with wave.open(str(out), "rb") as wf:
         n = wf.getnframes()
         pcm = np.frombuffer(wf.readframes(n), dtype=np.int16).reshape(-1, 2)
@@ -844,7 +864,7 @@ def test_v22_drop_rate_never_exceeds_cap_under_flood():
             state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Write",
                                 "tool_input": {"file_path": f"f{ev_i}.py"}})
             ev_i += 1
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
 
     assert len(onset_times) > 0, "expected at least some dispatched drops under a flood"
     times = np.array(onset_times)
@@ -857,8 +877,8 @@ def test_v22_drop_rate_never_exceeds_cap_under_flood():
     # also directly pins the pacing floor: no two onsets closer than 150ms
     if len(times) > 1:
         gaps = np.diff(np.sort(times))
-        assert np.min(gaps) >= sonifier.DROP_MIN_GAP_S - 1e-9, (
-            f"two onsets fired closer than the {sonifier.DROP_MIN_GAP_S}s pacing floor: "
+        assert np.min(gaps) >= DROP_MIN_GAP_S - 1e-9, (
+            f"two onsets fired closer than the {DROP_MIN_GAP_S}s pacing floor: "
             f"min gap={np.min(gaps):.4f}s"
         )
 
@@ -880,13 +900,13 @@ def test_v22_burst_coalescing_merges_close_events_into_one_onset():
 
     # Advance ~50ms, fire event 1; advance 100ms, fire event 2 (< 250ms gap).
     for _ in range(int(0.05 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {}})
     for _ in range(int(0.10 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {}})
     for _ in range(int(0.30 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
 
     assert len(fired) == 1, f"two events 100ms apart should coalesce into 1 onset, got {len(fired)}"
     # the second (coalesced/suppressed) event's weight is carried forward as
@@ -903,19 +923,19 @@ def test_v22_embedding_rule_note_and_knock_peak_caps():
     state = make_ambient(seed=42)
     state.handle_event({"hook_event_name": "SessionStart"})
     for _ in range(int(4.0 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)  # let bed_level_db settle
-    bed_ref_db = state.bed.bed_level_db.value + sonifier.BED_CAL_DB
+        render_block(state, BLOCK)  # let bed_level_db settle
+    bed_ref_db = state.bed.bed_level_db.value + BED_CAL_DB
 
     state._pending.clear()
     rng = np.random.default_rng(1)
-    state._spawn_note(rng, sonifier._midi_hz(60), velocity=0.5)
+    state._spawn_note(rng, _midi_hz(60), velocity=0.5)
     voices = list(state._pending)
     assert voices, "expected the note to queue at least one voice"
     peak_lin = max(float(np.max(np.abs(v["buf"]))) for v in voices)
     peak_db = 20 * math.log10(peak_lin + 1e-12)
-    assert peak_db <= bed_ref_db + sonifier.NOTE_EMBED_CAP_DB + 0.5, (
+    assert peak_db <= bed_ref_db + NOTE_EMBED_CAP_DB + 0.5, (
         f"note peak {peak_db:.1f}dB exceeds bed({bed_ref_db:.1f}) + "
-        f"{sonifier.NOTE_EMBED_CAP_DB}dB embedding cap"
+        f"{NOTE_EMBED_CAP_DB}dB embedding cap"
     )
 
     state._pending.clear()
@@ -924,9 +944,9 @@ def test_v22_embedding_rule_note_and_knock_peak_caps():
     assert knock_voices, "expected the failure knock to queue voices"
     knock_peak_lin = max(float(np.max(np.abs(v["buf"]))) for v in knock_voices)
     knock_peak_db = 20 * math.log10(knock_peak_lin + 1e-12)
-    assert knock_peak_db <= bed_ref_db + sonifier.KNOCK_EMBED_CAP_DB + 0.5, (
+    assert knock_peak_db <= bed_ref_db + KNOCK_EMBED_CAP_DB + 0.5, (
         f"knock peak {knock_peak_db:.1f}dB exceeds bed({bed_ref_db:.1f}) + "
-        f"{sonifier.KNOCK_EMBED_CAP_DB}dB embedding cap"
+        f"{KNOCK_EMBED_CAP_DB}dB embedding cap"
     )
 
 
@@ -952,23 +972,23 @@ def test_v22_stereo_pan_limits_drops_and_notes():
     drop_pans = []
     for _ in range(200):
         state._pending.clear()
-        state.rain.spawn_one_drop(rng, sonifier.CLASS_READ, state.fill_smooth.value)
+        state.rain.spawn_one_drop(rng, CLASS_READ, state.fill_smooth.value)
         for v in state._pending:
             drop_pans.append(_implied_pan(v["buf"]))
     assert drop_pans, "expected drop voices to inspect"
-    assert max(abs(p) for p in drop_pans) <= sonifier.DROP_PAN_LIMIT + 0.02, (
-        f"a drop pan exceeded the +-{sonifier.DROP_PAN_LIMIT} limit: max={max(abs(p) for p in drop_pans):.3f}"
+    assert max(abs(p) for p in drop_pans) <= DROP_PAN_LIMIT + 0.02, (
+        f"a drop pan exceeded the +-{DROP_PAN_LIMIT} limit: max={max(abs(p) for p in drop_pans):.3f}"
     )
 
     note_pans = []
     for _ in range(100):
         state._pending.clear()
-        state._spawn_note(rng, sonifier._midi_hz(60), velocity=0.4)
+        state._spawn_note(rng, _midi_hz(60), velocity=0.4)
         for v in state._pending:
             note_pans.append(_implied_pan(v["buf"]))
     assert note_pans
-    assert max(abs(p) for p in note_pans) <= sonifier.NOTE_PAN_LIMIT + 0.02, (
-        f"a note pan exceeded the +-{sonifier.NOTE_PAN_LIMIT} limit: max={max(abs(p) for p in note_pans):.3f}"
+    assert max(abs(p) for p in note_pans) <= NOTE_PAN_LIMIT + 0.02, (
+        f"a note pan exceeded the +-{NOTE_PAN_LIMIT} limit: max={max(abs(p) for p in note_pans):.3f}"
     )
 
     # knock is centered (pan=0.0) by construction (handle_event PostToolUseFailure)
@@ -994,7 +1014,7 @@ def test_v22_no_sine_chirp_drops_are_noise_band():
     test_v23_drop_timbre_woodblock_is_tonal_not_noise below for its own,
     opposite assertion."""
     rng = np.random.default_rng(9)
-    bank = sonifier._build_drop_bank(rng, SR, count=14, timbre="noise")
+    bank = _build_drop_bank(rng, SR, count=14, timbre="noise")
     for i, grain in enumerate(bank):
         n = len(grain)
         spec = np.abs(np.fft.rfft(grain * np.hanning(n))) ** 2
@@ -1017,7 +1037,7 @@ def test_v23_drop_timbre_woodblock_is_tonal_not_noise():
     test_v22_no_sine_chirp_drops_are_noise_band's noise-band assertion for
     the "noise" timbre but in the other direction."""
     rng = np.random.default_rng(9)
-    bank = sonifier._build_drop_bank(rng, SR, count=14, timbre="woodblock")
+    bank = _build_drop_bank(rng, SR, count=14, timbre="woodblock")
     flatnesses = []
     for grain in bank:
         n = len(grain)
@@ -1040,9 +1060,9 @@ def test_v23_drop_timbre_noise_matches_legacy_v22_output():
     still be byte-for-byte the v2.2 grain synthesis (same RNG draws, same
     _render_one_drop_variant math)."""
     rng_a = np.random.default_rng(42)
-    bank_new = sonifier._build_drop_bank(rng_a, SR, timbre="noise")
+    bank_new = _build_drop_bank(rng_a, SR, timbre="noise")
     rng_b = np.random.default_rng(42)
-    bank_legacy = [sonifier._render_one_drop_variant(rng_b, SR) for _ in range(14)]
+    bank_legacy = [_render_one_drop_variant(rng_b, SR) for _ in range(14)]
     assert len(bank_new) == len(bank_legacy)
     for a, b in zip(bank_new, bank_legacy):
         assert np.array_equal(a, b), "noise-timbre drop bank diverged from the legacy v2.2 synthesis"
@@ -1065,12 +1085,12 @@ def test_v23_ambient_theme_drop_timbre_config_reaches_rain_layer():
         am = float(np.mean(spec))
         return gm / max(am, 1e-30)
 
-    noise_state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7,
-                                        cfg=sonifier.AmbientConfig(drop_timbre="noise"))
+    noise_state = AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7,
+                                        cfg=AmbientConfig(drop_timbre="noise"))
     assert min(flatness(g) for g in noise_state.rain.drop_bank) > 0.002, (
         "AmbientTheme(drop_timbre='noise') did not build a noise-band bank")
 
-    wood_state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7)
+    wood_state = AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=7)
     assert max(flatness(g) for g in wood_state.rain.drop_bank) < 0.002, (
         "AmbientTheme's default drop_timbre did not build a tonal/modal bank")
 
@@ -1081,9 +1101,9 @@ def test_v23_drop_timbre_switching_produces_distinct_nonsilent_banks():
     synthesis, not a claim about which sounds best -- that's the blind-test
     kits' job)."""
     banks = {}
-    for timbre in sonifier.DROP_TIMBRES:
+    for timbre in DROP_TIMBRES:
         rng = np.random.default_rng(5)
-        bank = sonifier._build_drop_bank(rng, SR, count=4, timbre=timbre)
+        bank = _build_drop_bank(rng, SR, count=4, timbre=timbre)
         assert all(np.max(np.abs(g)) > 0.0 for g in bank), f"{timbre} produced a silent grain"
         banks[timbre] = np.concatenate(bank)
     names = list(banks)
@@ -1101,8 +1121,8 @@ def test_v24_done_cadence_v22_matches_legacy_stop_handling():
     the cadence melody, same -33dB/6s bed hold, no settled-bloom throttling).
     Verified via a full render MD5 match in research/BRIEF-v2.4.md; this is
     the fast in-process regression pin (same trick as drop_timbre="noise")."""
-    state = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=9,
-                                  cfg=sonifier.AmbientConfig(done_cadence="v22"))
+    state = AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=9,
+                                  cfg=AmbientConfig(done_cadence="v22"))
     assert state.bed.done_cadence == "v22"
     state.handle_event({"hook_event_name": "SessionStart"})
     state.handle_event({"hook_event_name": "Stop"})
@@ -1118,14 +1138,14 @@ def test_v24_authentic_cadence_lands_on_tonic_with_bass_root():
     resolved rather than just a melody that stopped."""
     rng = np.random.default_rng(1)
     for _ in range(20):
-        notes = sonifier._build_cadence_notes_v24(rng)
-        land_midi, land_hz = sonifier._nearest_pool_note(60)
+        notes = _build_cadence_notes_v24(rng)
+        land_midi, land_hz = _nearest_pool_note(60)
         assert notes[-1] == pytest.approx(land_hz), "v2.4 cadence must always land on C4"
 
     state = make_ambient(seed=10)
     state.handle_event({"hook_event_name": "SessionStart"})
     for _ in range(int(4.0 * SR / BLOCK)):
-        sonifier.render_block(state, BLOCK)
+        render_block(state, BLOCK)
     state._pending.clear()
     state.handle_event({"hook_event_name": "Stop"})
     voices = list(state._pending)
@@ -1152,11 +1172,11 @@ def test_v24_settled_bed_dips_deeper_than_v22_after_stop():
     state.handle_event({"hook_event_name": "SessionStart"})
     state.handle_event({"hook_event_name": "Stop"})
     target_v24, tau_v24 = state.bed._bed_target_db(state.t + 1.0, state.last_event_t, state.session_start_t)
-    assert target_v24 == sonifier.SETTLED_BED_DB
+    assert target_v24 == SETTLED_BED_DB
     assert target_v24 < -33.0, "v2.4 settled target must be deeper than v2.2's -33dB hold"
 
-    state22 = sonifier.AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=11,
-                                    cfg=sonifier.AmbientConfig(done_cadence="v22"))
+    state22 = AmbientTheme(sr=SR, volume=1.0, mute=False, quiet=True, seed=11,
+                                    cfg=AmbientConfig(done_cadence="v22"))
     state22.handle_event({"hook_event_name": "SessionStart"})
     state22.handle_event({"hook_event_name": "Stop"})
     target_v22, _ = state22.bed._bed_target_db(state22.t + 1.0, state22.last_event_t, state22.session_start_t)
@@ -1168,7 +1188,7 @@ def test_v24_settled_bed_dips_deeper_than_v22_after_stop():
     # still in its settled hold.
     late_v24, _ = state.bed._bed_target_db(state.t + 10.0, state.last_event_t, state.session_start_t)
     late_v22, _ = state22.bed._bed_target_db(state22.t + 10.0, state22.last_event_t, state22.session_start_t)
-    assert late_v24 == sonifier.SETTLED_BED_DB, "v2.4 should still be settled 10s after Stop"
+    assert late_v24 == SETTLED_BED_DB, "v2.4 should still be settled 10s after Stop"
     assert late_v22 != -33.0, "v2.2's 6s hold should have already expired 10s after Stop"
 
 
@@ -1211,7 +1231,7 @@ def test_v22_reverb_rt60_in_target_range():
     """BRIEF-v2.2.md section 2: warm-room reverb RT60 target 1.0-2.2s (was
     ~3-4s). Schroeder backward-integration T20 estimate off the Freeverb
     impulse response."""
-    fv = sonifier.Freeverb(SR)
+    fv = Freeverb(SR)
     n_blocks = int(math.ceil(8.0 * SR / BLOCK))
     out = []
     impulse_block = np.zeros(BLOCK)
@@ -1272,14 +1292,14 @@ def test_v22_drops_are_audible_over_the_bed():
     band/threshold derivation, which is future work, not a regression of
     this pin."""
     rng = np.random.default_rng(0)
-    bank = sonifier._build_drop_bank(rng, SR, timbre="noise")
+    bank = _build_drop_bank(rng, SR, timbre="noise")
 
     # bed reference: an idle-but-alive render, same output chain
     bed, _ = render_events([(0.0, {"hook_event_name": "SessionStart"})], 25.0, seed=3)
     bed_db = float(np.median(_band_frame_db(bed.mean(axis=1)[int(15 * SR):])))
 
-    chain = (sonifier.AMBIENT_DRY_GAIN
-             * sonifier._db_to_lin(sonifier.AMBIENT_MASTER_HEADROOM_DB) * 1.0)
+    chain = (AMBIENT_DRY_GAIN
+             * _db_to_lin(AMBIENT_MASTER_HEADROOM_DB) * 1.0)
     worst = None
     for cls, pitch_mult, cls_db in (("write", 1.0, 0.0), ("read", 1.3, -2.0), ("exec", 0.7, 0.0)):
         base = bank[0]
@@ -1287,8 +1307,8 @@ def test_v22_drops_are_audible_over_the_bed():
             n = len(base)
             base = np.interp(np.linspace(0, n - 1, max(4, int(n / pitch_mult))),
                              np.arange(n), base)
-        for amp in (-sonifier.DROP_AMP_SPREAD_DB, 0.0, sonifier.DROP_AMP_SPREAD_DB):
-            g = sonifier._db_to_lin(cls_db + amp + sonifier.DROP_CAL_DB) * chain
+        for amp in (-DROP_AMP_SPREAD_DB, 0.0, DROP_AMP_SPREAD_DB):
+            g = _db_to_lin(cls_db + amp + DROP_CAL_DB) * chain
             # buffer sized to fit the grain (was a fixed 0.1s tuned to the
             # old ~5-10ms noise-tick grain; drop grains can now run longer)
             y = np.zeros(max(int(0.1 * SR), len(base) + 100))
@@ -1330,11 +1350,11 @@ def test_v22_knock_is_concentrated_in_80_400hz_and_peak_normalised():
     peak-normalised to exactly 1.0 rather than 0.85."""
     from scipy import signal as sps
     rng = np.random.default_rng(0)
-    k = sonifier._render_knock(rng, velocity=0.75, sr=SR)
+    k = _render_knock(rng, velocity=0.75, sr=SR)
     assert abs(float(np.max(np.abs(k))) - 1.0) < 1e-6, "knock is not peak-normalised to 1.0"
 
-    assert sonifier.KNOCK_EMBED_CAP_DB <= 16.0, (
-        f"knock embedding cap {sonifier.KNOCK_EMBED_CAP_DB} dB is back in alarm territory")
+    assert KNOCK_EMBED_CAP_DB <= 16.0, (
+        f"knock embedding cap {KNOCK_EMBED_CAP_DB} dB is back in alarm territory")
 
     def band_energy(lo, hi):
         nyq = SR / 2.0
@@ -1363,7 +1383,7 @@ def test_v22_room_pause_duck_is_smooth_bounded_and_returns_to_unity():
         state.t += BLOCK / SR
     g = np.concatenate(gains)
     depth_db = 20 * math.log10(float(np.min(g)))
-    assert -sonifier.DUCK_DEPTH_DB - 0.5 <= depth_db <= -2.0, (
+    assert -DUCK_DEPTH_DB - 0.5 <= depth_db <= -2.0, (
         f"room-pause depth {depth_db:.2f} dB outside the intended 2-3 dB dip")
     assert float(np.max(np.abs(np.diff(g)))) < 0.01, (
         "duck gain steps discontinuously (click) -- check DUCK_SMOOTH_S / re-trigger path")
@@ -1382,22 +1402,22 @@ def test_v22_coalescing_keeps_weight_when_the_pacing_floor_refuses_a_drop():
     # occupy the pacing floor with an onset "just now"
     state.rain._last_any_onset_t = state.t
     state.rain._last_event_onset_t = -999.0
-    state.rain._event_coalesce_bonus_db = sonifier.BURST_COALESCE_STEP_DB
+    state.rain._event_coalesce_bonus_db = BURST_COALESCE_STEP_DB
     spawned = []
     state.rain.spawn_one_drop = lambda rng, cls, fill_smooth_value, extra_gain_db=0.0: spawned.append(extra_gain_db)
 
-    state.rain.trigger_event_drop(state._rng, sonifier.CLASS_WRITE, state.t, state.fill_smooth.value)
+    state.rain.trigger_event_drop(state._rng, CLASS_WRITE, state.t, state.fill_smooth.value)
     assert not spawned, "pacing floor should have refused this drop"
-    assert state.rain._event_coalesce_bonus_db > sonifier.BURST_COALESCE_STEP_DB, (
+    assert state.rain._event_coalesce_bonus_db > BURST_COALESCE_STEP_DB, (
         "coalescing weight was thrown away on a refused dispatch")
 
     # once the floor clears, the accumulated weight must reach a real drop
-    state.t += sonifier.DROP_MIN_GAP_S + 0.3
-    state.rain.trigger_event_drop(state._rng, sonifier.CLASS_WRITE, state.t, state.fill_smooth.value)
+    state.t += DROP_MIN_GAP_S + 0.3
+    state.rain.trigger_event_drop(state._rng, CLASS_WRITE, state.t, state.fill_smooth.value)
     assert spawned, "no drop after the pacing floor cleared"
-    assert spawned[0] >= 2 * sonifier.BURST_COALESCE_STEP_DB, (
+    assert spawned[0] >= 2 * BURST_COALESCE_STEP_DB, (
         f"merged weight {spawned[0]:.1f} dB did not carry across the refusal")
-    assert spawned[0] <= sonifier.BURST_COALESCE_MAX_DB + 1e-9, "coalescing weight escaped its cap"
+    assert spawned[0] <= BURST_COALESCE_MAX_DB + 1e-9, "coalescing weight escaped its cap"
 
 
 def test_v22_midlayer_state_is_sized_from_the_frequency_table(monkeypatch):
@@ -1405,8 +1425,8 @@ def test_v22_midlayer_state_is_sized_from_the_frequency_table(monkeypatch):
     Adding a third mid-bed voice made every block raise inside _render_bed,
     which render_block's fault handler turns into SILENCE rather than an
     error -- a change that looks like it works and renders nothing."""
-    monkeypatch.setattr(sonifier, "MIDLAYER_FREQS",
-                        np.array([sonifier.ROOT_C3, sonifier.ROOT_G3, 261.63]))
+    monkeypatch.setattr(sys.modules[__name__], "MIDLAYER_FREQS",
+                        np.array([ROOT_C3, ROOT_G3, 261.63]))
     audio, _ = render_events([(0.0, {"hook_event_name": "SessionStart"}),
                               (2.0, {"hook_event_name": "UserPromptSubmit"})], 8.0, seed=0)
     assert float(np.max(np.abs(audio))) > 1e-4, (
@@ -1420,7 +1440,7 @@ def test_v22_analyzer_and_engine_knock_caps_agree():
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
     import analyze_render  # noqa: E402
     assert (analyze_render._EMBEDDING_EVENTS["PostToolUseFailure"]
-            == sonifier.KNOCK_EMBED_CAP_DB)
+            == KNOCK_EMBED_CAP_DB)
 
 
 def test_v22_ms_clamp_does_not_mono_collapse_or_zipper():
@@ -1541,7 +1561,7 @@ def test_anonymous_session_end_skips_silencing_when_tracked_session_live():
 
 
 def test_session_tracker_note_end_live_count_and_expiry():
-    tracker = sonifier.SessionTracker()
+    tracker = SessionTracker()
     assert tracker.live_count(0.0) == 0
 
     tracker.note("A", 0.0)
@@ -1696,3 +1716,20 @@ def test_room_fades_in_without_sessionstart():
     ]
     audio, _state = render_events(events, duration_s=10.0, seed=3)
     assert window_rms(audio, center_s=8.0, half_width_s=1.0) > 1e-4
+
+
+def test_restart_path_does_not_snap_fade_value():
+    # The restart-inferred session-start branch (no SessionStart seen, just
+    # a live session proven by an ordinary event -- POST /restart mid-
+    # session) must only retarget the fade curves, never snap .value/.tau:
+    # a room that's already mid-fade should keep fading from where it is,
+    # not blink to silent-then-back. Simulate "already up a while" by hand-
+    # advancing _session_fade past its constructor default before the
+    # restart-inferred branch fires.
+    state = make_ambient(seed=1)
+    state._session_fade.value = 0.4
+    state._session_fade.target = 0.4
+    state.handle_event({"hook_event_name": "PreToolUse", "tool_name": "Read",
+                         "session_id": "s1"})
+    assert state._session_fade.value == 0.4, "value must not be snapped on the restart path"
+    assert state._session_fade.target == 1.0, "target must still be retargeted"

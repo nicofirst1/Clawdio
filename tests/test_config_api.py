@@ -157,6 +157,33 @@ def test_live_apply_reaches_ambient_rain_layer(cfg_file):
     assert state.volume == 0.7
 
 
+def test_rain_layer_tracks_theme_flag_without_snapshot():
+    # RainLayer.rain_enabled must read through to the theme's live flag, not
+    # cache a snapshot at construction -- distinguishes "reads live" (this
+    # test passes) from "cached a copy at __init__ time" (this test fails,
+    # since the cached copy would still read the constructor's original
+    # value). Bypasses _apply_live entirely: sets the theme-level flag
+    # directly to prove there is only one source of truth, not two kept in
+    # sync by a write-both-copies path.
+    from ambient import AmbientTheme
+    state = AmbientTheme(clicks_enabled=True)
+    assert state.rain.rain_enabled is True
+    state.rain_enabled = False
+    assert state.rain.rain_enabled is False
+
+
+def test_live_apply_reaches_geiger_clicks_chimes():
+    # Regression: _LIVE_ATTRS is theme-agnostic, but the geiger theme reads
+    # clicks_enabled/chimes_enabled at render time (geiger.py:298,306), not
+    # ambient's rain_enabled/gestures_enabled. D's _LIVE_ATTRS collapse
+    # dropped the geiger names, making a live POST /config {clicks:false}
+    # (or chimes) a silent no-op on a geiger daemon. Keep both themes' names.
+    state = GeigerTheme(clicks_enabled=True, chimes_enabled=True)
+    io_modes._apply_live(state, {"clicks": False, "chimes": False})
+    assert state.clicks_enabled is False
+    assert state.chimes_enabled is False
+
+
 def test_event_endpoint_still_works(server):
     _state, port, _ = server
     status, _data = _post(port, "/event", {"hook_event_name": "PreToolUse", "tool_name": "Read"})

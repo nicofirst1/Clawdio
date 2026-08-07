@@ -85,6 +85,52 @@ class SessionTracker:
         return len(self._last_seen)
 
 
+# Decay window for subagent presence: how long after an agent_id was last seen
+# we still count that subagent "probably active". Presence is driven by ANY
+# event carrying an agent_id, not matched SubagentStart/Stop counting, because
+# those are unreliable (9238252: a real daemon log showed 4 starts vs 13 stops).
+# 12s is a guess at covering a subagent that pauses "thinking" between tool
+# calls without lingering long after it's done -- tune if the stem/register
+# cuts out mid-subagent or hangs on too long. Single source of truth: geiger's
+# click gate (SubagentPresenceTracker below) and ambient's StemLayer both read
+# this one value (ambient_layers.py imports it from here).
+SUBAGENT_PRESENCE_DECAY_S = 12.0
+
+
+class SubagentPresenceTracker:
+    """Tracks agent_ids seen recently (any event carrying agent_id, not
+    just SubagentStart/Stop) so a consumer can compute "how many subagents
+    are probably still active" without relying solely on a naive start/stop
+    refcount. Ingress-thread-only, no locks (same threading contract as
+    SessionTracker)."""
+
+    def __init__(self, decay_s=SUBAGENT_PRESENCE_DECAY_S):
+        self._decay_s = decay_s
+        self._last_seen = {}  # agent_id -> last-seen t (virtual clock)
+
+    def note(self, agent_id, t):
+        """Call on every event that carries a non-empty agent_id."""
+        if not agent_id:
+            return
+        self._last_seen[agent_id] = t
+
+    def drop(self, agent_id):
+        """Immediate removal (e.g. a clean SubagentStop with agent_id) --
+        skips waiting out the decay window."""
+        if agent_id:
+            self._last_seen.pop(agent_id, None)
+
+    def active_count(self, t):
+        """Prunes expired entries (last seen > decay_s ago) and returns the
+        count of what's left. Call on every event (tagged or not) so decay
+        is evaluated on schedule, not only when a new agent_id arrives."""
+        expired = [aid for aid, seen in self._last_seen.items()
+                   if t - seen > self._decay_s]
+        for aid in expired:
+            del self._last_seen[aid]
+        return len(self._last_seen)
+
+
 def _classify_bash_command(cmd):
     """Classify a Bash tool's shell command string into 'read' | 'exec'."""
     if not isinstance(cmd, str):

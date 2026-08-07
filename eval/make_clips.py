@@ -39,7 +39,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 os.environ.setdefault("SONIFIER_QUIET", "1")
 os.environ["SONIFIER_THEME"] = "ambient"
 
-import sonifier as S  # noqa: E402
+from ambient_layers import (  # noqa: E402
+    BURST_COALESCE_WINDOW_S, DROP_MIN_GAP_S, _drop_rate_from_activity,
+)
+from io_modes import run_render  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_OUT = os.path.join(HERE, "clips")
@@ -67,7 +70,7 @@ def render_clip(name, events, out_dir, seed, duration_hint=None):
     jsonl_path = os.path.join(out_dir, f"{name}.jsonl")
     wav_path = os.path.join(out_dir, f"{name}.wav")
     write_jsonl(events, jsonl_path)
-    S.run_render(jsonl_path, wav_path, seed=seed)
+    run_render(jsonl_path, wav_path, seed=seed)
     mp3_path = os.path.join(out_dir, f"{name}.mp3")
     if shutil.which("ffmpeg"):
         subprocess.run(
@@ -320,10 +323,12 @@ def build_block_c(out_dir):
         c2   0.73 drops/s, worst 2 s window  3.0/s
         c3   0.37 drops/s, worst 2 s window  1.5/s
     """
+    global _drop_rate_from_activity, DROP_MIN_GAP_S, BURST_COALESCE_WINDOW_S
+
     print("Block C -- pacing A/B/C flip-point probe (same session, 3 rate maps)")
     events = _pacing_session_events()
 
-    v22_rate_fn = S._drop_rate_from_activity  # the real, shipped v2.2 mapping
+    v22_rate_fn = _drop_rate_from_activity  # the real, shipped v2.2 mapping
 
     def v2_rate_fn(a):
         # v2's original mapping (BRIEF-v2.md section 2): rate = 2 + 38*a**1.3,
@@ -338,22 +343,22 @@ def build_block_c(out_dir):
     # (name, rate map, seed, pacing floor s, coalescing window s)
     variants = [
         ("c1_v2_mapping", v2_rate_fn, 301, 0.020, 0.0),
-        ("c2_v22_mapping", v22_rate_fn, 302, S.DROP_MIN_GAP_S, S.BURST_COALESCE_WINDOW_S),
+        ("c2_v22_mapping", v22_rate_fn, 302, DROP_MIN_GAP_S, BURST_COALESCE_WINDOW_S),
         ("c3_v22_half_density", v22_half_rate_fn, 303,
-         2.0 * S.DROP_MIN_GAP_S, 2.0 * S.BURST_COALESCE_WINDOW_S),
+         2.0 * DROP_MIN_GAP_S, 2.0 * BURST_COALESCE_WINDOW_S),
     ]
-    ship_floor = S.DROP_MIN_GAP_S
-    ship_coal = S.BURST_COALESCE_WINDOW_S
+    ship_floor = DROP_MIN_GAP_S
+    ship_coal = BURST_COALESCE_WINDOW_S
     for name, rate_fn, seed, floor, coal in variants:
-        S._drop_rate_from_activity = rate_fn
-        S.DROP_MIN_GAP_S = floor
-        S.BURST_COALESCE_WINDOW_S = coal
+        _drop_rate_from_activity = rate_fn
+        DROP_MIN_GAP_S = floor
+        BURST_COALESCE_WINDOW_S = coal
         try:
             render_clip(name, events, out_dir, seed=seed)
         finally:
-            S._drop_rate_from_activity = v22_rate_fn
-            S.DROP_MIN_GAP_S = ship_floor
-            S.BURST_COALESCE_WINDOW_S = ship_coal
+            _drop_rate_from_activity = v22_rate_fn
+            DROP_MIN_GAP_S = ship_floor
+            BURST_COALESCE_WINDOW_S = ship_coal
 
     with open(os.path.join(out_dir, "block_c_README.txt"), "w") as f:
         f.write(

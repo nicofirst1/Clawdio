@@ -49,7 +49,7 @@ from analyze_render import (  # noqa: E402
 # RT60 off a real impulse response instead of guessing it from program
 # material (which is not separable -- see analyze_render.n3_rt60_tail).
 try:
-    import sonifier as _engine
+    import ambient_layers as _engine
 except Exception:  # pragma: no cover - engine import is best-effort
     _engine = None
 

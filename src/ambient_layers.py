@@ -21,6 +21,7 @@ except Exception:  # pragma: no cover - environment dependent
 from config import SAMPLE_RATE, CLASS_READ, CLASS_WRITE, CLASS_EXEC
 from dsp import Slew, _mono_to_stereo
 from logging_setup import get_logger
+from classify import SUBAGENT_PRESENCE_DECAY_S  # single source of truth (shared with geiger)
 
 log = get_logger("sonifier")
 
@@ -826,25 +827,17 @@ NOTE_DIRECT_FRAC = 0.80     # notes are now mostly a direct signal, not 100% wet
 NOTE_REVERB_FRAC = 0.15     # secondary send, ~-6dB vs a fully-wet v2 note
 SUBBASS_CAL_DB = 18.0       # L5 sub-bass weather drone (same label-vs-mix
                             # calibration story as the stems)
-STEM_CAL_DB = 18.0
-STEM_DETUNE_CENTS = np.array([-9.0, 0.0, 9.0])
-STEM_LP_HZ = 520.0
-# ponytail: max gap between subagent-tagged events before we consider that
-# subagent gone. SubagentStart/Stop are unreliable (observed 4 starts vs 13
-# stops in a real daemon log), so presence is driven by ANY event carrying
-# an agent_id instead of matched start/stop counting. Subagents can pause
-# several seconds "thinking" between tool calls -- 12s is a guess at
-# covering that without the stem lingering long after the subagent is
-# actually done; tune if the stem cuts out mid-subagent or lingers too long.
-SUBAGENT_PRESENCE_DECAY_S = 12.0
-WHOOSH_CAL_DB = 30.0        # L2 bash-in-flight swell: the brief's -34 dBFS is
-                            # again relative to its own -26 dBFS bed; raw, the
-                            # swell measured 26 dB under this mix's 252 Hz band
-                            # (i.e. not there at all)          # L4 subagent stems. The brief's "-32 dBFS" label is
+STEM_CAL_DB = 18.0          # L4 subagent stems. The brief's "-32 dBFS" label is
                             # relative to its own "-26 dBFS bed"; against this
                             # mix's calibrated bed the raw -32 dB gain landed
                             # 23 dB under the bed, i.e. inaudible -- and an
                             # inaudible stem defeats the whole point of L4.
+STEM_DETUNE_CENTS = np.array([-9.0, 0.0, 9.0])
+STEM_LP_HZ = 520.0
+WHOOSH_CAL_DB = 30.0        # L2 bash-in-flight swell: the brief's -34 dBFS is
+                            # again relative to its own -26 dBFS bed; raw, the
+                            # swell measured 26 dB under this mix's 252 Hz band
+                            # (i.e. not there at all)
 
 # L1b "air": the continuous broadband bed. BRIEF section 2 only specifies a
 # pink rain bed that fades in with activity; measurement showed that without
@@ -1290,12 +1283,11 @@ class BedLayer:
             # than the legacy 6s/-33dB hold, which fell back to the ordinary
             # idle ladder (-30dB, same as "idle but recently working") after
             # only 6s -- the opposite of a distinct "waiting for you" state.
-            # Gated on last_event_t (not a hard `t <` timeout): a fixed timer
-            # that falls through to the LOUDER idle ladder is the same
-            # "gets louder while waiting" defect this cadence work fixed
-            # elsewhere, just delayed to t=SETTLED_HOLD_S post-Stop. Settled
-            # now holds for as long as the agent stays idle since Stop, and
-            # only exits when a genuinely new event advances last_event_t.
+            # Gated on last_event_t, not a hard `t <` timeout: a fixed timer
+            # that falls through to the LOUDER idle ladder is the same "gets
+            # louder while waiting" defect this cadence work fixed elsewhere,
+            # just delayed to t=SETTLED_HOLD_S post-Stop. This way settled
+            # holds until a genuinely new event advances last_event_t.
             return self.cfg.SETTLED_BED_DB, self.cfg.SETTLED_BED_TAU_S
         since_start = t - (session_start_t or 0.0)
         idle_dur = t - last_event_t
@@ -1446,12 +1438,12 @@ class RainLayer:
     passing its own _ingress_rng) and monkeypatched directly by the test
     suite."""
 
-    def __init__(self, rng, queue_voice, sr, rain_enabled, drop_timbre="woodblock", cfg=None):
+    def __init__(self, rng, queue_voice, sr, theme, drop_timbre="woodblock", cfg=None):
         self.cfg = cfg if cfg is not None else AMBIENT_CONFIG
         self._rng = rng
         self._queue_voice = queue_voice
         self.sr = sr
-        self.rain_enabled = rain_enabled
+        self._theme = theme
 
         self.drop_bank = _build_drop_bank(rng, sr, timbre=drop_timbre)
         self.rain_next_dt = 0.05
@@ -1488,6 +1480,14 @@ class RainLayer:
         else:  # pragma: no cover
             self._air_hp = ([1.0], [1.0])
         self._air_norm = _air_norm_factor(sr, self.cfg.AIR_TILT_HI_IDLE_HZ, self._air_hp)
+
+    @property
+    def rain_enabled(self) -> bool:
+        """Reads through to the theme's live flag -- no snapshot, so a live
+        toggle (POST /config) is visible here without a separate write path
+        (f812cc7 was exactly this: a cached copy the live-apply path forgot to
+        reach). See AmbientTheme.rain_enabled, the single source of truth."""
+        return self._theme.rain_enabled
 
     def spawn_one_drop(self, rng, cls, fill_smooth_value, extra_gain_db=0.0):
         """Render and queue exactly one drop voice (the coalesced unit --

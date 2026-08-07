@@ -46,7 +46,8 @@ os.environ.setdefault("SONIFIER_QUIET", "1")
 os.environ["SONIFIER_THEME"] = "ambient"
 
 import numpy as np  # noqa: E402
-import sonifier as S  # noqa: E402
+from ambient_layers import AMBIENT_CONFIG  # noqa: E402
+from io_modes import run_render  # noqa: E402
 
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 SEED = 20260804  # same "date as seed" convention as round3/round4 kits
@@ -121,12 +122,12 @@ def render(name, events, seed, v22_mode=False):
     wav_path = os.path.join(OUT_DIR, f"{name}.wav")
     write_jsonl(events, jsonl_path)
 
-    saved_cadence = S.AMBIENT_CONFIG.done_cadence
+    saved_cadence = AMBIENT_CONFIG.done_cadence
     try:
-        S.AMBIENT_CONFIG.done_cadence = "v22" if v22_mode else "v24"
-        S.run_render(jsonl_path, wav_path, seed=seed)
+        AMBIENT_CONFIG.done_cadence = "v22" if v22_mode else "v24"
+        run_render(jsonl_path, wav_path, seed=seed)
     finally:
-        S.AMBIENT_CONFIG.done_cadence = saved_cadence
+        AMBIENT_CONFIG.done_cadence = saved_cadence
 
     mp3_path = os.path.join(OUT_DIR, f"{name}.mp3")
     if shutil.which("ffmpeg"):

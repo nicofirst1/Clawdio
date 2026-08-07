@@ -124,7 +124,7 @@ class AmbientTheme:
         # byte-identical renders under a fixed seed.
         self.bed = BedLayer(self._rng, self._apply_lp_stage, sr,
                            done_cadence=self.cfg.done_cadence, cfg=self.cfg)
-        self.rain = RainLayer(self._rng, self._queue_voice, sr, self.rain_enabled,
+        self.rain = RainLayer(self._rng, self._queue_voice, sr, self,
                                drop_timbre=self.cfg.drop_timbre, cfg=self.cfg)
         self.bloom = BloomLayer(self._rng, self._spawn_note, self._note_refractory, sr,
                                  cfg=self.cfg)
@@ -170,6 +170,28 @@ class AmbientTheme:
 
     # -- interface: handle_event --------------------------------------------
 
+    def _begin_session(self, *, snap_fade: bool) -> None:
+        """Shared 'a session just became live' state transition. snap_fade=True
+        resets the fade curves from their construction-time values (a genuine
+        SessionStart, first_live_session); snap_fade=False only redirects the
+        existing curves' targets (the restart-inferred path -- 13cc4cf -- never
+        yanks .value/.tau out from under a room that's already mid-fade, so a
+        POST /restart mid-session re-fades from wherever the room actually is
+        instead of blinking to silent-then-back)."""
+        self.session_started = True
+        self.session_start_t = self.t
+        self.session_ended = False
+        self.session_end_t = None
+        self._session_fade.target = 1.0
+        self._end_fade.target = 1.0
+        if snap_fade:
+            self._session_fade.value = 0.0
+            self._session_fade.tau = 1.0
+            self._end_fade.value = 1.0
+            # _end_fade.tau intentionally untouched here (stays at the ctor's
+            # 1.3 for the object's whole life) -- neither original call site
+            # ever set it; do not add that snap, it would be a behavior change.
+
     def handle_event(self, ev):
         if not isinstance(ev, dict):
             return
@@ -194,12 +216,7 @@ class AmbientTheme:
                 # session start: clear the silence gates and fade the room
                 # in. Targets only, no value snap: a no-op when the room is
                 # already up, a clean re-fade from wherever it actually is.
-                self.session_started = True
-                self.session_start_t = self.t
-                self.session_ended = False
-                self.session_end_t = None
-                self._session_fade.target = 1.0
-                self._end_fade.target = 1.0
+                self._begin_session(snap_fade=False)
         # BRIEF-v2.5: this session's voice slot for its discrete gestures
         # (failure knock, Stop cadence, needs-you chime, ack note). Read once
         # here and baked into whatever gesture this event queues. slot_pan is
@@ -357,16 +374,7 @@ class AmbientTheme:
             # the 0 -> 1 transition, not "is this session_id new".
             first_live_session = not was_live_before
             self.sessions.note(session_id, self.t)
-            self.session_started = True
-            self.session_start_t = self.t
-            self.session_ended = False
-            self.session_end_t = None
-            if first_live_session:
-                self._session_fade.value = 0.0
-                self._session_fade.target = 1.0
-                self._session_fade.tau = 1.0
-                self._end_fade.value = 1.0
-                self._end_fade.target = 1.0
+            self._begin_session(snap_fade=first_live_session)
             if self.gestures_enabled:
                 self._spawn_note(rng, ROOT_C2, velocity=0.3, gain_db=4.0)
         elif name == "SessionEnd":

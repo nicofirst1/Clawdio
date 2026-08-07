@@ -22,11 +22,10 @@ import io_modes  # noqa: E402
 import themes  # noqa: E402
 from ambient import AmbientTheme  # noqa: E402
 from ambient_layers import AMBIENT_CONFIG  # noqa: E402
-from geiger import GeigerTheme  # noqa: E402
-import sonifier  # noqa: E402
+from geiger import GeigerTheme, render_block  # noqa: E402
 
-SR = sonifier.SAMPLE_RATE
-BLOCK = sonifier.BLOCKSIZE
+SR = config.SAMPLE_RATE
+BLOCK = config.BLOCKSIZE
 
 
 @pytest.fixture
@@ -74,7 +73,7 @@ def _write_pack(dirpath, name, obj):
 
 
 def make_ambient(seed=0, volume=1.0, **kw):
-    return sonifier.AmbientTheme(sr=SR, volume=volume, mute=False, quiet=True, seed=seed, **kw)
+    return AmbientTheme(sr=SR, volume=volume, mute=False, quiet=True, seed=seed, **kw)
 
 
 def render_short(seed=0, duration_s=2.0, **kw):
@@ -83,7 +82,7 @@ def render_short(seed=0, duration_s=2.0, **kw):
     out = np.zeros((n_blocks * BLOCK, 2), dtype=np.float32)
     state.handle_event({"hook_event_name": "SessionStart", "session_id": "s1"})
     for b in range(n_blocks):
-        out[b * BLOCK:(b + 1) * BLOCK, :] = sonifier.render_block(state, BLOCK)
+        out[b * BLOCK:(b + 1) * BLOCK, :] = render_block(state, BLOCK)
     return out
 
 
