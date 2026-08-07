@@ -344,6 +344,10 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(payload)))
+            # These are dev/UI assets edited live and re-served on /restart; a
+            # cached style.css/viz.js silently masks changes (looks like "my
+            # fix didn't work"). Small, loopback-only -- never worth caching.
+            self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(payload)
             return

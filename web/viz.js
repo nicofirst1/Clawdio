@@ -5,7 +5,7 @@
 
 const $ = (id) => document.getElementById(id);
 
-const ICONS = { spawn: "✸", subagent: "✸", fail: "⚠", done: "✓", attention: "●", session: "▸" };
+const ICONS = { spawn: "✸", subagent: "✸", fail: "⚠", done: "✓", attention: "●", session: "▸", other: "·" };
 
 const MAX_ROWS = 500;
 const POLL_MS = 700;

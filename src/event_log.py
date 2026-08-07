@@ -36,6 +36,11 @@ _STATIC_KIND = {
     "SessionEnd": ("session", "session end"),
 }
 
+# Counted for the bar graph but deliberately NO log row -- too frequent to
+# be readable. Every OTHER unrecognized hook falls through to a generic
+# "other" row so the log stays forward-open to future Claude Code hooks.
+_NO_ROW = {"PostToolUse", "ContextPressure"}
+
 
 def _truncate(s: str, n: int = 64) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
@@ -85,7 +90,10 @@ def event_record(ev) -> dict | None:
     if name in _STATIC_KIND:
         kind, label = _STATIC_KIND[name]
         return {"kind": kind, "label": label, "detail": "", "session": session}
-    return None
+    if name in _NO_ROW:
+        return None
+    # Forward-open fallback: any hook Claude Code adds later still gets a row.
+    return {"kind": "other", "label": name, "detail": _detail(tool_input), "session": session}
 
 
 class EventLog:
@@ -199,7 +207,11 @@ class EventLog:
 if __name__ == "__main__":
     # ponytail: one runnable self-check for the mapping + ring + since filter.
     log = EventLog(capacity=3)
-    assert event_record({"hook_event_name": "PostToolUse"}) is None  # success skipped
+    assert event_record({"hook_event_name": "PostToolUse"}) is None  # no-row hook, skipped
+    assert event_record({"hook_event_name": "ContextPressure"}) is None  # no-row hook, skipped
+    # unrecognized hooks fall through to a generic "other" row (forward-open).
+    assert event_record({"hook_event_name": "TaskCreated", "session_id": "sXYZ12345"}) == {
+        "kind": "other", "label": "TaskCreated", "detail": "", "session": "sXYZ12"}
     assert event_record({"hook_event_name": "PreToolUse", "tool_name": "Read",
                          "tool_input": {"file_path": "/a/b/config.py"}}) == {
         "kind": "read", "label": "Read", "detail": "config.py", "session": ""}
