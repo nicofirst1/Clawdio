@@ -57,7 +57,7 @@ def _detail(tool_input) -> str:
     for key in ("command", "pattern", "query", "url", "description", "subagent_type", "prompt"):
         val = tool_input.get(key)
         if val:
-            return _truncate(str(val).strip().replace("\n", " "))
+            return _truncate(str(val).strip().replace("\n", " "), 160)
     return ""
 
 

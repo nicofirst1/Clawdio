@@ -14,6 +14,14 @@ const LABEL_W_KEY = "viz-hook-label-w";
 const LABEL_W_MIN = 60;
 const LABEL_W_MAX = 320;
 
+// Resizable log columns: css var -> [localStorage key, min, max, default px].
+const LOG_COLS = {
+  stripe: ["viz-w-stripe", 2, 40, 6],
+  time: ["viz-w-time", 40, 200, 74],
+  session: ["viz-w-session", 24, 160, 60],
+  label: ["viz-w-label", 24, 200, 72],
+};
+
 // Fixed hook order so the bar graph layout is stable; unknown hooks append at the end.
 const HOOK_ORDER = [
   "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
@@ -27,6 +35,7 @@ const idxColor = (idx) => IDX_COLORS[idx % IDX_COLORS.length];
 
 let since = 0;
 const log = $("log");
+const logHeadEl = $("log-head");
 const barsEl = $("bars");
 const barsWrapEl = barsEl.parentElement; // .bars-track-wrap — hosts --hook-label-w + the resize handle
 
@@ -55,6 +64,9 @@ function buildRow(ev, noAnim) {
   const row = document.createElement("div");
   row.className = noAnim ? `row kind-${ev.kind} no-anim` : `row kind-${ev.kind}`;
 
+  const stripe = document.createElement("span");
+  stripe.className = "col-stripe";
+
   const time = document.createElement("span");
   time.className = "col-time";
   time.textContent = new Date(ev.t * 1000).toLocaleTimeString();
@@ -76,7 +88,7 @@ function buildRow(ev, noAnim) {
   detail.textContent = ev.detail ?? "";
   detail.title = ev.detail ?? "";
 
-  row.append(time, icon, sess, label, detail);
+  row.append(stripe, time, icon, sess, label, detail);
   return row;
 }
 
@@ -90,7 +102,9 @@ function rebuildLog() {
   const stick = isNearBottom();
   const rows = rowBuf.filter(passesFilter);
 
-  log.textContent = "";
+  for (const el of [...log.children]) {
+    if (el !== logHeadEl) el.remove();
+  }
   const frag = document.createDocumentFragment();
   let maxId = 0;
   for (const ev of rows) {
@@ -120,9 +134,9 @@ function appendNewRows() {
     lastRenderedId = maxId;
   }
 
-  // Keep the DOM in sync with rowBuf's cap.
+  // Keep the DOM in sync with rowBuf's cap (log.children includes the sticky header).
   const cap = selectedSessions.size ? rowBuf.filter(passesFilter).length : rowBuf.length;
-  while (log.children.length > cap) log.removeChild(log.firstChild);
+  while (log.children.length - 1 > cap) log.removeChild(logHeadEl.nextSibling);
 
   if (stick) log.scrollTop = log.scrollHeight;
 }
@@ -353,6 +367,41 @@ function clampLabelW(w) {
   return Math.min(LABEL_W_MAX, Math.max(LABEL_W_MIN, Math.round(w)));
 }
 
+// ---- resizable log columns (stripe/time/session/label) ----
+function initLogColResize() {
+  for (const [col, [key, min, max, def]] of Object.entries(LOG_COLS)) {
+    const varName = `--w-${col}`;
+    const clamp = (w) => Math.min(max, Math.max(min, Math.round(w)));
+
+    const saved = Number(localStorage.getItem(key));
+    log.style.setProperty(varName, `${clamp(saved || def)}px`);
+
+    const handle = logHeadEl.querySelector(`.col-resize[data-col="${col}"]`);
+    if (!handle) continue;
+
+    let dragging = false;
+    let startX = 0;
+    let startW = 0;
+    const currentW = () => parseFloat(getComputedStyle(log).getPropertyValue(varName)) || def;
+
+    handle.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      startX = e.clientX;
+      startW = currentW();
+      handle.setPointerCapture(e.pointerId);
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      log.style.setProperty(varName, `${clamp(startW + (e.clientX - startX))}px`);
+    });
+    handle.addEventListener("pointerup", () => {
+      if (!dragging) return;
+      dragging = false;
+      localStorage.setItem(key, String(currentW()));
+    });
+  }
+}
+
 async function poll() {
   try {
     const res = await fetch(`/events?since=${since}`);
@@ -374,5 +423,6 @@ async function poll() {
 }
 
 initLabelResize();
+initLogColResize();
 poll();
 setInterval(poll, POLL_MS);
