@@ -142,6 +142,8 @@ main {
   text-shadow: 0 0 9px rgba(127,180,201,.55);
 }
 
+#theme_pack_row { margin-top: 1.1rem; }
+
 /* ---- fader ---- */
 .fader-row { display: flex; align-items: center; gap: 1.4rem; }
 input[type="range"] {
@@ -210,22 +212,35 @@ input[type="range"]::-moz-range-thumb {
 .switch.small i::after { width: 14px; height: 14px; top: 3px; left: 3px; transition: left .16s, background .16s; }
 .switch.small input:checked + i::after { left: 21px; top: 3px; }
 
-/* ---- numeric fields ---- */
+/* ---- numeric fields + select ---- */
 .fields { display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap; }
 .field { display: flex; flex-direction: column; gap: .45rem;
   font-size: .64rem; letter-spacing: .18em; text-transform: uppercase; color: var(--etch); }
 .field em { font-style: normal; color: #6d675e; }
 .field input::-webkit-outer-spin-button,
 .field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.field input {
-  width: 8ch; -moz-appearance: textfield; appearance: textfield;
+.field input,
+.field select {
+  width: 8ch; -moz-appearance: textfield; appearance: none;
   font: 400 .95rem var(--mono); color: var(--blue);
   background: var(--panel-lo); border: 1px solid var(--line); border-radius: 5px;
   padding: .4rem .5rem; text-align: right;
   box-shadow: inset 0 2px 5px rgba(0,0,0,.55);
   text-shadow: 0 0 7px rgba(127,180,201,.35);
 }
-.field input:focus { outline: 1px solid var(--blue); }
+.field select {
+  width: auto; text-align: left; text-align-last: left; cursor: pointer;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0 L5 6 L10 0 Z' fill='%238f8779'/></svg>");
+  background-repeat: no-repeat; background-position: right .55rem center;
+  padding-right: 1.7rem;
+}
+.field select option {
+  background: var(--panel-lo); color: var(--blue);
+}
+.field input:focus,
+.field select:focus {
+  outline: 1px solid var(--blue);
+}
 
 /* ---- footer ---- */
 footer {
