@@ -17,9 +17,9 @@ Design (serves "log everything so it's easier to debug"):
     console being spammed.
 
 Env:
-  SONIFIER_LOG_LEVEL   console level: DEBUG/INFO/WARNING/ERROR (default INFO,
-                       or WARNING when the daemon runs with SONIFIER_QUIET).
-  SONIFIER_LOG_FILE    path to a rotating debug log (2MB x 3). If unset, no
+  CLAUDIO_LOG_LEVEL   console level: DEBUG/INFO/WARNING/ERROR (default INFO,
+                       or WARNING when the daemon runs with CLAUDIO_QUIET).
+  CLAUDIO_LOG_FILE    path to a rotating debug log (2MB x 3). If unset, no
                        file handler is added (console only).
 """
 
@@ -43,7 +43,7 @@ def get_logger(name: str = _ROOT) -> logging.Logger:
 
 
 def _console_level(quiet: bool) -> int:
-    name = os.environ.get("SONIFIER_LOG_LEVEL", "").strip().upper()
+    name = os.environ.get("CLAUDIO_LOG_LEVEL", "").strip().upper()
     if name:
         return getattr(logging, name, logging.INFO)
     return logging.WARNING if quiet else logging.INFO
@@ -66,7 +66,7 @@ def configure(quiet: bool = False, log_file: str | None = None) -> logging.Logge
     console.setFormatter(fmt)
     root.addHandler(console)
 
-    path = log_file or os.environ.get("SONIFIER_LOG_FILE")
+    path = log_file or os.environ.get("CLAUDIO_LOG_FILE")
     if path:
         fh = RotatingFileHandler(path, maxBytes=2_000_000, backupCount=3)
         fh.setLevel(logging.DEBUG)  # file gets everything, always
@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
     with tempfile.NamedTemporaryFile("r", suffix=".log", delete=False) as tf:
         path = tf.name
-    os.environ["SONIFIER_LOG_LEVEL"] = "WARNING"
+    os.environ["CLAUDIO_LOG_LEVEL"] = "WARNING"
     configure(log_file=path)
     log = get_logger("pkg.logging_setup")
     assert log.name == "sonifier.logging_setup"

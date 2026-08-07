@@ -8,13 +8,13 @@ Two modes:
 1. Live fire (default): sends each event as a UDP datagram (optionally HTTP
    POST /event with --http) to 127.0.0.1:<port>, real-time paced according
    to each event's scheduled offset and --speed. Good for demoing/testing
-   the running daemon (`python3 src/sonifier.py`, run from the repo root)
+   the running daemon (`python3 src/main.py`, run from the repo root)
    without needing a real Claude Code session.
 
 2. --emit-jsonl FILE: instead of firing events live, writes the same event
    sequence as a render-script (one JSON object per line: {"t": <sec>,
    "event": {<hook JSON>}}), consumable by:
-       python3 src/sonifier.py --render FILE out.wav
+       python3 src/main.py --render FILE out.wav
 
 Stdlib only (uses urllib for --http, socket for UDP, json, argparse, time).
 
@@ -487,7 +487,7 @@ def main(argv=None):
     )
     parser.add_argument("--host", default=DEFAULT_HOST, help="daemon host (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=None,
-                         help="daemon port (default: $SONIFIER_PORT or 9753)")
+                         help="daemon port (default: $CLAUDIO_PORT or 9753)")
     parser.add_argument("--speed", type=float, default=1.0,
                          help="playback speed multiplier for live fire (e.g. 4.0 = 4x realtime; ignored with --emit-jsonl)")
     parser.add_argument("--http", action="store_true",
@@ -504,7 +504,7 @@ def main(argv=None):
     port = args.port
     if port is None:
         import os
-        port = int(os.environ.get("SONIFIER_PORT", DEFAULT_PORT))
+        port = int(os.environ.get("CLAUDIO_PORT", DEFAULT_PORT))
 
     if args.v2_demo:
         events = build_v2_demo_timeline()

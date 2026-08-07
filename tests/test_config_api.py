@@ -21,7 +21,7 @@ from geiger import GeigerTheme  # noqa: E402
 @pytest.fixture
 def cfg_file(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
-    monkeypatch.setenv("SONIFIER_CONFIG", str(path))
+    monkeypatch.setenv("CLAUDIO_CONFIG", str(path))
     return path
 
 
@@ -63,7 +63,7 @@ def _post(port, path, obj):
 # ---- config file layer ----
 
 def test_file_overrides_env(cfg_file, monkeypatch):
-    monkeypatch.setenv("SONIFIER_VOLUME", "0.9")
+    monkeypatch.setenv("CLAUDIO_VOLUME", "0.9")
     cfg_file.write_text(json.dumps({"volume": 0.2, "theme": "geiger"}))
     cfg = config.load_config()
     assert cfg["volume"] == 0.2

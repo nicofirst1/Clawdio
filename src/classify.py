@@ -1,5 +1,5 @@
 """Tool classification: classify(), _classify_bash_command(). Split out
-of sonifier.py; see sonifier.py for the module overview."""
+of main.py; see main.py for the module overview."""
 
 from __future__ import annotations
 

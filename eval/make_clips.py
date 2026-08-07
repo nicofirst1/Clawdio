@@ -36,8 +36,8 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
-os.environ.setdefault("SONIFIER_QUIET", "1")
-os.environ["SONIFIER_THEME"] = "ambient"
+os.environ.setdefault("CLAUDIO_QUIET", "1")
+os.environ["CLAUDIO_THEME"] = "ambient"
 
 from ambient_layers import (  # noqa: E402
     BURST_COALESCE_WINDOW_S, DROP_MIN_GAP_S, _drop_rate_from_activity,

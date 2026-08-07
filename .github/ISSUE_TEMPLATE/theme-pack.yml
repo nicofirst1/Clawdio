@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Claudio version
-      description: panel footer or `python3 src/sonifier.py --check`
+      description: panel footer or `python3 src/main.py --check`
       placeholder: "2.5.0"
     validations:
       required: true
@@ -44,6 +44,6 @@ body:
       options:
         - label: >-
             I rendered this pack with
-            `SONIFIER_THEME_PACK=<name> python3 src/sonifier.py --render demos/demo-session-v2.jsonl clip.wav --seed 7`
+            `CLAUDIO_THEME_PACK=<name> python3 src/main.py --render demos/demo-session-v2.jsonl clip.wav --seed 7`
             and attached or listened to the result.
           required: false

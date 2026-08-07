@@ -1,7 +1,7 @@
 """Ambient sound layer building blocks: musical helpers, DSP utils
 (_onepole_lp, _dc_blocker, etc.), Freeverb, voice-pool helpers, drop/FM
 synthesis, AmbientConfig, StemLayer, WeatherLayer, BedLayer, RainLayer,
-BloomLayer. Split out of sonifier.py; see sonifier.py for the module
+BloomLayer. Split out of main.py; see main.py for the module
 overview."""
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ if not _HAVE_SCIPY:
         "scipy is not importable; AmbientTheme requires it (Freeverb damping "
         "/ rain & bed filtering). Install with:\n"
         "    pip install scipy --break-system-packages\n"
-        "GeigerTheme (SONIFIER_THEME=geiger) still works without scipy."
+        "GeigerTheme (CLAUDIO_THEME=geiger) still works without scipy."
     )
 
 # -- musical framework (brief section 1) -------------------------------------
@@ -774,7 +774,7 @@ SUPERSAW_AMPS = np.where(np.abs(SUPERSAW_CENTS) < 1e-6, 1.0, 0.7)
 # a "distant bing under pressure" into something embedded in the room.
 AMBIENT_WET_GAIN = 0.85 * (10.0 ** (-6.0 / 20.0))  # -6dB vs v2's 0.85 (~0.426)
 AMBIENT_DRY_GAIN = 1.30    # v2 was 1.0; "dry fraction up" per section 2
-AMBIENT_MASTER_HEADROOM_DB = -15.5  # master trim: at SONIFIER_VOLUME=1.0 the
+AMBIENT_MASTER_HEADROOM_DB = -15.5  # master trim: at CLAUDIO_VOLUME=1.0 the
                             # active-state program sits at about -23 dBFS RMS /
                             # -8 dBFS peak (a sane ambient master), and the
                             # daemon's 0.5 default lands 6 dB below that.

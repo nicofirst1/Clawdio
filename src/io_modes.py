@@ -1,6 +1,6 @@
 """Offline render / live daemon / --check modes: run_render(), run_live(),
 run_check(), the HTTP+UDP event ingress server, and theme-state factory.
-Split out of sonifier.py; see sonifier.py for the module overview."""
+Split out of main.py; see main.py for the module overview."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ log = get_logger("sonifier")
 
 def _build_theme_state(cfg, seed):
     """Theme factory used by both run_render and run_live: picks GeigerTheme
-    or AmbientTheme per cfg["theme"] (SONIFIER_THEME, default "ambient")."""
+    or AmbientTheme per cfg["theme"] (CLAUDIO_THEME, default "ambient")."""
     kwargs = dict(
         sr=SAMPLE_RATE,
         volume=cfg["volume"],
@@ -427,9 +427,9 @@ def run_live():
         log.error(
             "cannot listen on port %s: %s\n"
             "Another sonifier (or unrelated process) is probably already "
-            "using it. Either stop it (pkill -f sonifier.py) or pick another "
-            "port with SONIFIER_PORT=9800 -- remember to export the same "
-            "SONIFIER_PORT for hooks/send-event.sh so events still reach it.",
+            "using it. Either stop it (pkill -f main.py) or pick another "
+            "port with CLAUDIO_PORT=9800 -- remember to export the same "
+            "CLAUDIO_PORT for hooks/send-event.sh so events still reach it.",
             cfg["port"], exc,
         )
         sys.exit(1)

@@ -10,14 +10,14 @@
 # hang Claude Code.
 #
 # Env:
-#   SONIFIER_PORT   UDP port the daemon listens on (default 9753)
-#   SONIFIER_HOST   host the daemon listens on (default 127.0.0.1)
+#   CLAUDIO_PORT   UDP port the daemon listens on (default 9753)
+#   CLAUDIO_HOST   host the daemon listens on (default 127.0.0.1)
 #
 # Usage: some-hook-json | hooks/send-event.sh
 set -u
 
-PORT="${SONIFIER_PORT:-9753}"
-HOST="${SONIFIER_HOST:-127.0.0.1}"
+PORT="${CLAUDIO_PORT:-9753}"
+HOST="${CLAUDIO_HOST:-127.0.0.1}"
 
 # Read at most 8KiB of stdin (hook payloads are small JSON objects; this
 # caps worst-case latency/memory if something huge is piped in).

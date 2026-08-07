@@ -42,8 +42,8 @@ import sys
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "src"))
-os.environ.setdefault("SONIFIER_QUIET", "1")
-os.environ["SONIFIER_THEME"] = "ambient"
+os.environ.setdefault("CLAUDIO_QUIET", "1")
+os.environ["CLAUDIO_THEME"] = "ambient"
 
 import numpy as np  # noqa: E402
 from ambient_layers import AMBIENT_CONFIG  # noqa: E402

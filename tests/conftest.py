@@ -7,4 +7,4 @@ def _isolate_user_config(tmp_path, monkeypatch):
     lets it override env vars, so a panel-written ~/.config/claudio/config.json
     (theme, theme_pack, ...) would silently change what the suite exercises.
     Tests that want a config file (test_config_api's cfg_file) re-point this."""
-    monkeypatch.setenv("SONIFIER_CONFIG", str(tmp_path / "config.json"))
+    monkeypatch.setenv("CLAUDIO_CONFIG", str(tmp_path / "config.json"))

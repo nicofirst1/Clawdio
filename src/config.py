@@ -1,5 +1,5 @@
 """Config: constants, env-var helpers, load_config(). Split out of
-sonifier.py; see sonifier.py for the module overview."""
+main.py; see main.py for the module overview."""
 
 from __future__ import annotations
 
@@ -75,7 +75,7 @@ def _env_float(name: str, default: float) -> float:
 
 
 def _env_bool_flag(name: str, default: bool) -> bool:
-    """For SONIFIER_CLICKS/CHIMES/DRONE style '0 disables' flags."""
+    """For CLAUDIO_CLICKS/CHIMES/DRONE style '0 disables' flags."""
     v = os.environ.get(name)
     if v is None or v == "":
         return default
@@ -200,7 +200,7 @@ _save_lock = threading.Lock()
 
 
 def config_path() -> str:
-    return os.environ.get("SONIFIER_CONFIG") or os.path.expanduser(
+    return os.environ.get("CLAUDIO_CONFIG") or os.path.expanduser(
         "~/.config/claudio/config.json"
     )
 
@@ -245,16 +245,16 @@ def save_config(updates: dict) -> dict:
 
 def load_config() -> dict:
     cfg = dict(
-        port=_env_int("SONIFIER_PORT", 9753),
-        volume=max(0.0, min(1.0, _env_float("SONIFIER_VOLUME", 0.5))),
-        mute=_env_bool_flag("SONIFIER_MUTE", False),
-        clicks=_env_bool_flag("SONIFIER_CLICKS", True),
-        chimes=_env_bool_flag("SONIFIER_CHIMES", True),
-        drone=_env_bool_flag("SONIFIER_DRONE", False),
-        idle_exit_min=max(0.0, _env_float("SONIFIER_IDLE_EXIT_MIN", 30.0)),
-        quiet=_env_bool_flag("SONIFIER_QUIET", False),
-        theme=_env_theme("SONIFIER_THEME", THEME_AMBIENT),
-        theme_pack=_norm_pack(os.environ.get("SONIFIER_THEME_PACK", ""), ""),
+        port=_env_int("CLAUDIO_PORT", 9753),
+        volume=max(0.0, min(1.0, _env_float("CLAUDIO_VOLUME", 0.5))),
+        mute=_env_bool_flag("CLAUDIO_MUTE", False),
+        clicks=_env_bool_flag("CLAUDIO_CLICKS", True),
+        chimes=_env_bool_flag("CLAUDIO_CHIMES", True),
+        drone=_env_bool_flag("CLAUDIO_DRONE", False),
+        idle_exit_min=max(0.0, _env_float("CLAUDIO_IDLE_EXIT_MIN", 30.0)),
+        quiet=_env_bool_flag("CLAUDIO_QUIET", False),
+        theme=_env_theme("CLAUDIO_THEME", THEME_AMBIENT),
+        theme_pack=_norm_pack(os.environ.get("CLAUDIO_THEME_PACK", ""), ""),
     )
     for k, v in _read_config_file().items():
         norm = CONFIG_NORMALIZERS.get(k)
