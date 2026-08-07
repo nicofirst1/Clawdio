@@ -1,4 +1,4 @@
-"""Plain-pytest DSP tests for sonifier.py. No audio device required -- all
+"""Plain-pytest DSP tests for main.py. No audio device required -- all
 tests drive EngineState/render_block directly (or via run_render) in
 offline/virtual-clock mode.
 """
@@ -137,7 +137,7 @@ def test_drone_stays_off_by_default_even_with_context_pressure():
     # drone=False (default) explicitly.
     audio, state = render_events_offline(events, duration_s=5.0, seed=3, drone=False,
                                           clicks=False, chimes=False)
-    assert np.max(np.abs(audio)) < 1e-6, "drone must stay off unless SONIFIER_DRONE=1"
+    assert np.max(np.abs(audio)) < 1e-6, "drone must stay off unless CLAUDIO_DRONE=1"
 
 
 def test_drone_audible_when_enabled_and_pressure_high():
@@ -542,7 +542,7 @@ def test_send_event_delivers_without_timeout_binary(tmp_path):
     port = probe.getsockname()[1]
     probe.settimeout(2.0)
 
-    env = {"PATH": str(bindir), "SONIFIER_PORT": str(port), "SONIFIER_HOST": "127.0.0.1"}
+    env = {"PATH": str(bindir), "CLAUDIO_PORT": str(port), "CLAUDIO_HOST": "127.0.0.1"}
     payload = json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Bash"})
     subprocess.run([shutil.which("bash"), script], input=payload.encode(),
                    env=env, check=True, timeout=5)
@@ -554,11 +554,11 @@ def test_send_event_delivers_without_timeout_binary(tmp_path):
 def test_env_bool_flag_accepts_off_and_no():
     for val, expected in [("0", False), ("false", False), ("off", False), ("no", False),
                           ("OFF", False), ("1", True), ("true", True), ("yes", True)]:
-        os.environ["SONIFIER_TEST_FLAG"] = val
+        os.environ["CLAUDIO_TEST_FLAG"] = val
         try:
-            assert _env_bool_flag("SONIFIER_TEST_FLAG", True) is expected, val
+            assert _env_bool_flag("CLAUDIO_TEST_FLAG", True) is expected, val
         finally:
-            del os.environ["SONIFIER_TEST_FLAG"]
+            del os.environ["CLAUDIO_TEST_FLAG"]
 
 
 def test_render_is_deterministic_for_a_fixed_seed(tmp_path):

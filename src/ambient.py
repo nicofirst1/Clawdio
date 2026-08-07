@@ -1,5 +1,5 @@
 """AmbientTheme: v2 default sound layer (generative pad + rain + melodic
-bloom). Split out of sonifier.py; see sonifier.py for the module overview."""
+bloom). Split out of main.py; see main.py for the module overview."""
 
 from __future__ import annotations
 
@@ -60,10 +60,10 @@ class AmbientTheme:
         self.sr = sr
         self.volume = volume
         self.mute = mute
-        # DEVIATION: SONIFIER_CLICKS gates L2 (rain: the v1 "click" analog),
-        # SONIFIER_CHIMES gates discrete gestures (the v1 "chime" analog:
+        # DEVIATION: CLAUDIO_CLICKS gates L2 (rain: the v1 "click" analog),
+        # CLAUDIO_CHIMES gates discrete gestures (the v1 "chime" analog:
         # knock, cadence, notification chime, ack note, settling gesture).
-        # SONIFIER_DRONE is accepted for signature/env compatibility but is
+        # CLAUDIO_DRONE is accepted for signature/env compatibility but is
         # NOT used to gate L5 weather -- per brief section 8 the pressure
         # layer "is part of ambient theme, on by default there" (event-
         # driven by ContextPressure, same as v1's drone_x plumbing).

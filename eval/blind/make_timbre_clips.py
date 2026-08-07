@@ -4,9 +4,9 @@ to neutral labels P/Q/R/S.
 
 Standalone (numpy only for synthesis; scipy optional, falls back to a pure
 python biquad loop for the control's RBJ bandpass -- same fallback pattern
-sonifier.py uses). Does NOT import sonifier.py (that module is being
+main.py uses). Does NOT import main.py (that module is being
 refactored by another agent); parameters for the control clip are cribbed
-by hand from sonifier.py's _render_one_drop_variant / _render_knock
+by hand from main.py's _render_one_drop_variant / _render_knock
 (read-only reference, see comments below).
 
 Usage: .venv/bin/python eval/blind/make_timbre_clips.py
@@ -38,7 +38,7 @@ def make_tap_times(rng, dur, rate=0.5, min_gap=0.3):
 
 
 # -- shared: light Schroeder reverb (comb + allpass), cribbed conceptually ----
-# from sonifier.py's Freeverb section (comb/allpass delay-line reverb), but
+# from main.py's Freeverb section (comb/allpass delay-line reverb), but
 # reimplemented standalone/short since that file is read-only reference.
 
 def schroeder_reverb(x, sr, mix=0.12):
@@ -67,7 +67,7 @@ def schroeder_reverb(x, sr, mix=0.12):
 
 
 def rbj_bandpass(x, center, q, sr):
-    """RBJ constant-skirt bandpass biquad -- same math as sonifier.py's
+    """RBJ constant-skirt bandpass biquad -- same math as main.py's
     _rbj_bandpass (read-only reference), reimplemented standalone here."""
     w0 = 2 * np.pi * center / sr
     alpha = np.sin(w0) / (2.0 * max(q, 0.5))
@@ -101,7 +101,7 @@ def raised_cosine_attack(n):
 
 def render_woodblock(rng, velocity=0.7, sr=SR):
     """2-3 exponentially-decaying inharmonic modes, fundamental 800-1200 Hz,
-    decay < 150 ms. Same modal-synthesis idea as sonifier.py's _render_knock
+    decay < 150 ms. Same modal-synthesis idea as main.py's _render_knock
     (inharmonic mode ratios + noise contact transient) but pitched up an
     octave-plus into the "woodblock tick" range per the brief, read-only
     reference not copied verbatim."""
@@ -178,10 +178,10 @@ def render_plink(rng, velocity=0.7, sr=SR):
     return (sig / peak).astype(np.float64)
 
 
-# -- candidate D: CONTROL, v2.2 noise tick (crib from sonifier.py) ------------
+# -- candidate D: CONTROL, v2.2 noise tick (crib from main.py) ------------
 
 def render_noise_tick(rng, velocity=0.7, sr=SR):
-    """Control: reproduces sonifier.py's _render_one_drop_variant verbatim
+    """Control: reproduces main.py's _render_one_drop_variant verbatim
     parameters (read-only reference) -- 4-10ms white noise burst through an
     RBJ bandpass 1.8-3.5kHz Q 2-4, sharp exp decay tau 1.5-4ms. velocity is
     accepted for a uniform call signature but this grain has no velocity

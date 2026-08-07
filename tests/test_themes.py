@@ -31,7 +31,7 @@ BLOCK = config.BLOCKSIZE
 @pytest.fixture
 def cfg_file(tmp_path, monkeypatch):
     path = tmp_path / "config.json"
-    monkeypatch.setenv("SONIFIER_CONFIG", str(path))
+    monkeypatch.setenv("CLAUDIO_CONFIG", str(path))
     return path
 
 

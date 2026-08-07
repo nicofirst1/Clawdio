@@ -14,14 +14,14 @@ Real-time audio sonification daemon for Claude Code. Turns Claude Code hook
 events into an audio soundscape describing the session. As of v2 the default
 sound is "ambient" (generative pad + rain + melodic bloom, see
 AmbientTheme / BRIEF-v2.md); the original v1 Geiger-counter click-train sound
-is preserved verbatim as GeigerTheme and selectable via SONIFIER_THEME=geiger.
+is preserved verbatim as GeigerTheme and selectable via CLAUDIO_THEME=geiger.
 
 Usage:
-    python3 sonifier.py                          # live mode (needs sounddevice)
-    python3 sonifier.py --render events.jsonl out.wav [--seed N]
-    python3 sonifier.py --check                  # print config/capability JSON
+    python3 main.py                          # live mode (needs sounddevice)
+    python3 main.py --render events.jsonl out.wav [--seed N]
+    python3 main.py --check                  # print config/capability JSON
 
-Env SONIFIER_THEME selects the sound layer: "ambient" (default) or "geiger"
+Env CLAUDIO_THEME selects the sound layer: "ambient" (default) or "geiger"
 (legacy v1 sound). Everything else (ingress, ports, CLI, hooks) is theme-
 agnostic and unchanged between v1 and v2.
 
@@ -30,9 +30,8 @@ AmbientTheme / classify for the core DSP + mapping logic.
 
 This module is the CLI entry point; the implementation lives in sibling
 modules (config, classify, dsp, geiger, ambient_layers, ambient, themes,
-io_modes) split out for maintainability. Callers that used to do
-`from sonifier import X` should import X from the module that owns it
-directly.
+io_modes) split out for maintainability. Callers should import X from the
+module that owns it directly, rather than from this entry-point module.
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ log = get_logger("sonifier")
 # --------------------------------------------------------------------------
 
 USAGE = """\
-usage: sonifier.py [--check | --render IN.jsonl OUT.wav [--seed N] | --help]
+usage: main.py [--check | --render IN.jsonl OUT.wav [--seed N] | --help]
 
   (no args)               run the live daemon (needs sounddevice)
   --check                 print config/capability JSON, exit
@@ -60,8 +59,8 @@ usage: sonifier.py [--check | --render IN.jsonl OUT.wav [--seed N] | --help]
                           offline render, no audio hardware needed
   -h, --help              show this message and exit
 
-Key env vars: SONIFIER_PORT (9753), SONIFIER_THEME (ambient|geiger),
-SONIFIER_VOLUME, SONIFIER_MUTE=1, SONIFIER_IDLE_EXIT_MIN, SONIFIER_LOG_DIR.
+Key env vars: CLAUDIO_PORT (9753), CLAUDIO_THEME (ambient|geiger),
+CLAUDIO_VOLUME, CLAUDIO_MUTE=1, CLAUDIO_IDLE_EXIT_MIN, CLAUDIO_LOG_DIR.
 """
 
 
@@ -92,7 +91,7 @@ def main(argv=None):
         print(USAGE, end="")
         return 0
 
-    _configure_logging(quiet=_env_bool_flag("SONIFIER_QUIET", False))
+    _configure_logging(quiet=_env_bool_flag("CLAUDIO_QUIET", False))
 
     if args.check:
         return run_check()

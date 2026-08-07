@@ -8,15 +8,15 @@ _Hear what a Claude Code session is doing without watching the terminal._
 
 Claudio is a local audio daemon. Claude Code hook events (tool calls, subagents, failures, compaction, context pressure) arrive over UDP or HTTP on port 9753 and become a generative ambient soundscape: a pad that breathes, rain that thickens when busy, a wooden knock on failure, a descending chime on stop. Research prototype, formerly claude-geiger. Needs python3 + numpy + scipy; `sounddevice` only for live playback.
 
-The sound layer is a swappable **theme** (`SONIFIER_THEME`; see [Themes](#themes)).
+The sound layer is a swappable **theme** (`CLAUDIO_THEME`; see [Themes](#themes)).
 
 Multiple Claude Code sessions can share one daemon: events blend into the same room, which only fades to silence once the last session ends, and each session's gestures get their own pan/pitch (`docs/research/BRIEF-v2.5.md`).
 
 ## Quickstart
 
 ```bash
-uv run src/sonifier.py --check    # zero setup: prints config + capability JSON
-python3 src/sonifier.py           # live: bind port 9753, play audio (needs sounddevice)
+uv run src/main.py --check    # zero setup: prints config + capability JSON
+python3 src/main.py           # live: bind port 9753, play audio (needs sounddevice)
 ```
 
 `uv run` reads the PEP 723 header and builds a venv on the fly, so `--check` needs nothing installed. For live audio, install deps below and let Claude Code start the daemon.
@@ -28,7 +28,7 @@ Each step: a command, a success signal.
 1. **Confirm it runs.**
 
    ```bash
-   uv run src/sonifier.py --check
+   uv run src/main.py --check
    ```
 
    Success: JSON, exit 0, `"port": 9753`, `"theme": "ambient"` (`"audio_device_available": false` OK headless).
@@ -54,7 +54,7 @@ Each step: a command, a success signal.
 4. **Re-check the boot config.**
 
    ```bash
-   python3 src/sonifier.py --check
+   python3 src/main.py --check
    ```
 
    Success: exit 0, `"theme"`/`"port"` match intent.
@@ -62,7 +62,7 @@ Each step: a command, a success signal.
 5. **Smoke-test offline.**
 
    ```bash
-   python3 src/sonifier.py --render demos/demo-session-v2.jsonl /tmp/smoke.wav --seed 7
+   python3 src/main.py --render demos/demo-session-v2.jsonl /tmp/smoke.wav --seed 7
    ```
 
    Success: `rendered N events -> /tmp/smoke.wav`, exit 0, a WAV on disk.
@@ -71,7 +71,7 @@ Each step: a command, a success signal.
 
 ## HTTP and UDP surface
 
-Binds `0.0.0.0:SONIFIER_PORT` (9753), HTTP and UDP.
+Binds `0.0.0.0:CLAUDIO_PORT` (9753), HTTP and UDP.
 
 | Endpoint        | Scope         | What it does                                   |
 | --------------- | ------------- | ---------------------------------------------- |
@@ -91,20 +91,20 @@ Every knob is an env var; a config file (written by the web panel) **overrides**
 
 | Var                      | Default                         | Meaning                                             |
 | ------------------------ | ------------------------------- | --------------------------------------------------- |
-| `SONIFIER_THEME`         | `ambient`                       | `ambient` (v2) or `geiger` (legacy v1)              |
-| `SONIFIER_PORT`          | `9753`                          | UDP/HTTP listen port                                |
-| `SONIFIER_VOLUME`        | `0.5`                           | master volume 0.0-1.0                               |
-| `SONIFIER_MUTE`          | off                             | mute output, daemon keeps running                   |
-| `SONIFIER_IDLE_EXIT_MIN` | `30`                            | minutes of silence before daemon exits              |
-| `SONIFIER_CLICKS`        | on                              | `geiger` click train / `ambient` rain layer         |
-| `SONIFIER_CHIMES`        | on                              | `geiger` chimes / `ambient` knock-cadence-chime-ack |
-| `SONIFIER_DRONE`         | off                             | `geiger` pressure drone; unused in `ambient`        |
-| `SONIFIER_QUIET`         | off                             | suppress per-event stderr logging                   |
-| `SONIFIER_LOG_DIR`       | `$TMPDIR` or `/tmp`             | where autostart writes `sonifier.log`               |
-| `SONIFIER_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                            |
-| `SONIFIER_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)                  |
-| `SONIFIER_CONFIG`        | `~/.config/claudio/config.json` | override config file path                           |
-| `SONIFIER_THEME_PACK`    | unset                           | ambient theme pack name (restart key; see below)    |
+| `CLAUDIO_THEME`         | `ambient`                       | `ambient` (v2) or `geiger` (legacy v1)              |
+| `CLAUDIO_PORT`          | `9753`                          | UDP/HTTP listen port                                |
+| `CLAUDIO_VOLUME`        | `0.5`                           | master volume 0.0-1.0                               |
+| `CLAUDIO_MUTE`          | off                             | mute output, daemon keeps running                   |
+| `CLAUDIO_IDLE_EXIT_MIN` | `30`                            | minutes of silence before daemon exits              |
+| `CLAUDIO_CLICKS`        | on                              | `geiger` click train / `ambient` rain layer         |
+| `CLAUDIO_CHIMES`        | on                              | `geiger` chimes / `ambient` knock-cadence-chime-ack |
+| `CLAUDIO_DRONE`         | off                             | `geiger` pressure drone; unused in `ambient`        |
+| `CLAUDIO_QUIET`         | off                             | suppress per-event stderr logging                   |
+| `CLAUDIO_LOG_DIR`       | `$TMPDIR` or `/tmp`             | where autostart writes `sonifier.log`               |
+| `CLAUDIO_LOG_LEVEL`     | `INFO`                          | DEBUG/INFO/WARNING/ERROR                            |
+| `CLAUDIO_LOG_FILE`      | unset                           | rotating debug log path (2 MB x 3)                  |
+| `CLAUDIO_CONFIG`        | `~/.config/claudio/config.json` | override config file path                           |
+| `CLAUDIO_THEME_PACK`    | unset                           | ambient theme pack name (restart key; see below)    |
 
 Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 
@@ -114,12 +114,12 @@ Booleans: off for `0`/`false`/`off`/`no`, on otherwise.
 
 `geiger` (legacy v1, no scipy): Poisson click train tracking activity, read/write/exec timbres, failure/Stop tones.
 
-`ambient` also takes a **theme pack**: a small JSON file that overrides a whitelisted set of sound constants, no code changes. `dusk` (darker, slower) and `porcelain` (brighter, sparser) ship in `themes/`. Select with `SONIFIER_THEME_PACK`, `theme_pack` in the config file, or the web panel. Details and the full field table: `docs/THEMES.md`.
+`ambient` also takes a **theme pack**: a small JSON file that overrides a whitelisted set of sound constants, no code changes. `dusk` (darker, slower) and `porcelain` (brighter, sparser) ship in `themes/`. Select with `CLAUDIO_THEME_PACK`, `theme_pack` in the config file, or the web panel. Details and the full field table: `docs/THEMES.md`.
 
 ## Offline render and demos
 
 ```bash
-python3 src/sonifier.py --render events.jsonl out.wav --seed 7   # 48kHz stereo WAV, fixed RNG
+python3 src/main.py --render events.jsonl out.wav --seed 7   # 48kHz stereo WAV, fixed RNG
 ```
 
 `events.jsonl`: one JSON object per line, `{"t": <seconds>, "event": {<hook JSON>}}`; duration = last `t` + 3s tail. Four demos ship in `demos/`, from a full storyboard to a v1/geiger clip.
@@ -145,7 +145,7 @@ Spec-driven: specs in `docs/research/BRIEF-v2*.md`, design history in `docs/PROJ
 
 ```bash
 ./install.sh --uninstall --project    # or --global, same scope as install
-pkill -f sonifier.py                  # or let it idle-exit (SONIFIER_IDLE_EXIT_MIN)
+pkill -f main.py                  # or let it idle-exit (CLAUDIO_IDLE_EXIT_MIN)
 ```
 
 Removes only this repo's hook entries, no-op if nothing to remove.

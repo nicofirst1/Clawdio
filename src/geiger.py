@@ -1,6 +1,6 @@
 """GeigerTheme (v1) sound engine: EngineState (alias GeigerTheme), the
 module-level render_block dispatcher, and click/chime/drone rendering.
-Split out of sonifier.py; see sonifier.py for the module overview."""
+Split out of main.py; see main.py for the module overview."""
 
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ class EngineState:
                 self.activity = 0.0
                 # Release the context-pressure drone too. Without this the
                 # daemon keeps droning at the last observed fill for the
-                # whole SONIFIER_IDLE_EXIT_MIN window (default 30 min) after
+                # whole CLAUDIO_IDLE_EXIT_MIN window (default 30 min) after
                 # the session is over.
                 self.drone_x = 0.0
         elif name == "ContextPressure":

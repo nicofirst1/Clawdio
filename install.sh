@@ -197,10 +197,10 @@ say "  interpreter: $PYTHON ($PY_VER)"
 if "$PYTHON" -c 'import numpy' >/dev/null 2>&1; then
     say "  numpy: OK"
 else
-    say "ERROR: numpy MISSING (required by src/sonifier.py, including offline --render)." >&2
+    say "ERROR: numpy MISSING (required by src/main.py, including offline --render)." >&2
     say "       Install with: python3 -m pip install -r requirements.txt" >&2
-    say "       Or skip setup entirely: uv run src/sonifier.py --check" >&2
-    say "       (src/sonifier.py has a PEP 723 header uv reads to build a venv on the fly)." >&2
+    say "       Or skip setup entirely: uv run src/main.py --check" >&2
+    say "       (src/main.py has a PEP 723 header uv reads to build a venv on the fly)." >&2
     exit 1
 fi
 
@@ -208,7 +208,7 @@ if "$PYTHON" -c 'import scipy' >/dev/null 2>&1; then
     say "  scipy: OK"
 else
     say "  scipy: MISSING (required by the default AmbientTheme sound -- v2's"
-    say "         Freeverb/bed/rain filtering. GeigerTheme, SONIFIER_THEME=geiger,"
+    say "         Freeverb/bed/rain filtering. GeigerTheme, CLAUDIO_THEME=geiger,"
     say "         still runs without it, but ambient will sound degraded/unfiltered.)"
     say "         Install with: python3 -m pip install -r requirements.txt"
 fi
@@ -409,7 +409,7 @@ fi
 say ""
 say "-- done --"
 say "Test the daemon manually with:"
-say "  python3 $SCRIPT_DIR/src/sonifier.py --check"
+say "  python3 $SCRIPT_DIR/src/main.py --check"
 say "Simulate a session without needing Claude Code at all:"
 say "  python3 $SCRIPT_DIR/src/simulate_session.py --speed 4"
-say "  python3 $SCRIPT_DIR/src/sonifier.py --render $SCRIPT_DIR/demos/demo-session.jsonl /tmp/demo.wav"
+say "  python3 $SCRIPT_DIR/src/main.py --render $SCRIPT_DIR/demos/demo-session.jsonl /tmp/demo.wav"

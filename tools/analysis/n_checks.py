@@ -38,7 +38,7 @@ def n1_drop_rate_cap(x, sr, events, rep):
 
 # Events whose handle_event() branch spawns a pitched one-shot (not a drop),
 # mapped to the embedding-rule cap that applies to it (BRIEF-v2.2.md sec. 4).
-# The knock cap tracks src/sonifier.py's KNOCK_EMBED_CAP_DB -- update together.
+# The knock cap tracks src/main.py's KNOCK_EMBED_CAP_DB -- update together.
 _EMBEDDING_EVENTS = {
     "UserPromptSubmit": 10.0,
     "Stop": 10.0,

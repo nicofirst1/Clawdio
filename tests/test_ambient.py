@@ -48,10 +48,10 @@ BLOCK = BLOCKSIZE
 @pytest.fixture(autouse=True)
 def _pin_ambient_theme(monkeypatch):
     """Every test in this module is about the ambient theme; pin it
-    explicitly so a stray SONIFIER_THEME=geiger in the environment cannot
+    explicitly so a stray CLAUDIO_THEME=geiger in the environment cannot
     silently turn these into geiger tests (and so the default-theme test
     below is the only place the default is exercised implicitly)."""
-    monkeypatch.setenv("SONIFIER_THEME", "ambient")
+    monkeypatch.setenv("CLAUDIO_THEME", "ambient")
 
 
 # --------------------------------------------------------------------------
@@ -147,13 +147,13 @@ def spectral_centroid_hz(mono, sr=SR):
 
 def test_ambient_is_default_theme(monkeypatch):
     # the only test that deliberately unsets the module-wide pin: with no
-    # SONIFIER_THEME in the environment the default must be ambient.
-    monkeypatch.delenv("SONIFIER_THEME", raising=False)
+    # CLAUDIO_THEME in the environment the default must be ambient.
+    monkeypatch.delenv("CLAUDIO_THEME", raising=False)
     cfg = load_config()
     assert cfg["theme"] == THEME_AMBIENT
-    monkeypatch.setenv("SONIFIER_THEME", "geiger")
+    monkeypatch.setenv("CLAUDIO_THEME", "geiger")
     assert load_config()["theme"] == THEME_GEIGER
-    monkeypatch.setenv("SONIFIER_THEME", "nonsense-value")
+    monkeypatch.setenv("CLAUDIO_THEME", "nonsense-value")
     assert load_config()["theme"] == THEME_AMBIENT
 
 
@@ -365,15 +365,15 @@ def test_no_nan_full_demo_render(tmp_path):
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "demos", "demo-session-v2.jsonl"
     )
     out_path = tmp_path / "v2.wav"
-    old = os.environ.get("SONIFIER_THEME")
-    os.environ["SONIFIER_THEME"] = "ambient"
+    old = os.environ.get("CLAUDIO_THEME")
+    os.environ["CLAUDIO_THEME"] = "ambient"
     try:
         run_render(events_path, str(out_path), seed=11)
     finally:
         if old is None:
-            os.environ.pop("SONIFIER_THEME", None)
+            os.environ.pop("CLAUDIO_THEME", None)
         else:
-            os.environ["SONIFIER_THEME"] = old
+            os.environ["CLAUDIO_THEME"] = old
     assert out_path.exists()
     import wave
     with wave.open(str(out_path), "rb") as wf:
@@ -421,16 +421,16 @@ def test_deterministic_given_seed(tmp_path):
             (2.2, {"hook_event_name": "SessionEnd"}),
         ]) + "\n")
     a, b = tmp_path / "a.wav", tmp_path / "b.wav"
-    old = os.environ.get("SONIFIER_THEME")
-    os.environ["SONIFIER_THEME"] = "ambient"
+    old = os.environ.get("CLAUDIO_THEME")
+    os.environ["CLAUDIO_THEME"] = "ambient"
     try:
         run_render(str(events_path), str(a), seed=9)
         run_render(str(events_path), str(b), seed=9)
     finally:
         if old is None:
-            os.environ.pop("SONIFIER_THEME", None)
+            os.environ.pop("CLAUDIO_THEME", None)
         else:
-            os.environ["SONIFIER_THEME"] = old
+            os.environ["CLAUDIO_THEME"] = old
     assert a.read_bytes() == b.read_bytes()
 
 
@@ -493,7 +493,7 @@ def test_geiger_theme_still_selectable_via_env(tmp_path, monkeypatch):
             (1.0, {"hook_event_name": "Stop"}),
         ]) + "\n")
     out_path = tmp_path / "geiger.wav"
-    monkeypatch.setenv("SONIFIER_THEME", "geiger")
+    monkeypatch.setenv("CLAUDIO_THEME", "geiger")
     cfg = load_config()
     assert cfg["theme"] == THEME_GEIGER
     run_render(str(events_path), str(out_path), seed=1)

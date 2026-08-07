@@ -60,7 +60,7 @@ The vacuum-cleaner/plane-engine principle: a well-engineered machine makes conti
 One-pole smoothing on every gain/cutoff (tau 10–50 ms minimum; state layers per §2 slews); raised-cosine attacks ≥5 ms; equal-power crossfades; DC blocker after tanh/noise (R=0.9975); master chain: sum at −12 dBFS headroom → tanh(x·0.6)/0.6 → clip ±0.99; stereo width from decorrelated generation + Freeverb spread (no Haas needed); voice allocator max 10 voices steal-oldest with 3 ms fade; all pre-rendered assets built once at init.
 
 ## 6. Engine integration requirements
-- New env: `SONIFIER_THEME=ambient` (DEFAULT) | `geiger` (legacy v1 sound, keep working). Implement themes as two engine classes behind one interface: handle_event(evt), render_block() → (256,2) f32. The ingress/mapping/CLI/ports/env contract from v1 is otherwise unchanged.
+- New env: `CLAUDIO_THEME=ambient` (DEFAULT) | `geiger` (legacy v1 sound, keep working). Implement themes as two engine classes behind one interface: handle_event(evt), render_block() → (256,2) f32. The ingress/mapping/CLI/ports/env contract from v1 is otherwise unchanged.
 - scipy joins numpy in PEP 723 deps (used for lfilter; keep sounddevice optional).
 - Blocksize stays 256 @ 48 kHz. Measured budget for full v2 scene ≈ 1.0–1.3 ms/block (~20–25% core) — acceptable; keep callback allocation-light (preallocate; small lfilter temporaries OK).
 - --render, --check, --seed, tests must all still work. Existing geiger tests keep passing; add ambient tests.
@@ -79,4 +79,4 @@ On a ≥60 s active-state render (and where noted on specific windows):
 10. No NaN/inf; renders reproducible per seed.
 
 ## 8. Demo (the deliverable MP3)
-`demo-session-v2.jsonl` ≈ 170–190 s telling a story: 0–10 s session start + idle bloom → 10–40 s gentle read/browse phase → 40–80 s active build (writes+execs, rain thickens, notes bloom) → ~85 s a failure (knock, room darkens) → 95 s retry succeeds (light returns) → 105–140 s subagent phase (choir thickens) + context pressure rising (weather gathers) → ~145 s PreCompact settle + pressure release → 150–165 s wind-down, Stop cadence → fade to silence. Render with seed fixed, SONIFIER_DRONE semantics replaced by theme (pressure layer is part of ambient theme, on by default there), encode 192k MP3.
+`demo-session-v2.jsonl` ≈ 170–190 s telling a story: 0–10 s session start + idle bloom → 10–40 s gentle read/browse phase → 40–80 s active build (writes+execs, rain thickens, notes bloom) → ~85 s a failure (knock, room darkens) → 95 s retry succeeds (light returns) → 105–140 s subagent phase (choir thickens) + context pressure rising (weather gathers) → ~145 s PreCompact settle + pressure release → 150–165 s wind-down, Stop cadence → fade to silence. Render with seed fixed, CLAUDIO_DRONE semantics replaced by theme (pressure layer is part of ambient theme, on by default there), encode 192k MP3.

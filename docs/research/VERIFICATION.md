@@ -21,7 +21,7 @@ artifact, and 97/97 tests are green.
 
 | File | Duration (ffprobe) | Notes |
 |---|---|---|
-| `realistic-pace-v22.mp3` | 176.544 s | **the blind-listening render.** `realistic-session.jsonl`, `SONIFIER_VOLUME=1.0 --seed 7`, 48 kHz stereo 192 kbit/s CBR; source WAV peak −8.11 dBFS, RMS −23.05 dBFS, 0 clipped samples |
+| `realistic-pace-v22.mp3` | 176.544 s | **the blind-listening render.** `realistic-session.jsonl`, `CLAUDIO_VOLUME=1.0 --seed 7`, 48 kHz stereo 192 kbit/s CBR; source WAV peak −8.11 dBFS, RMS −23.05 dBFS, 0 clipped samples |
 | `focus-loop-v22.mp3` | 60.408 s | `focus-session-v2.jsonl`, same settings; peak −5.76 dBFS, RMS −20.40 dBFS |
 | `demo-v22.mp3` | 180.024 s | `demo-session-v2.jsonl`, same settings; peak −4.80 dBFS, RMS −21.33 dBFS |
 | `eval/clips/` | 15 clips | regenerated fresh (Blocks A/B/C), fixed seeds, WAV + MP3 + `.jsonl` ground truth |
@@ -462,7 +462,7 @@ Artifacts:
 
 | File | Duration | Notes |
 |---|---|---|
-| `demo-v2.wav` | 180.00 s | 48 kHz stereo 16-bit, `SONIFIER_VOLUME=1.0 --seed 1234`, peak −6.24 dBFS, RMS −23.3 dBFS |
+| `demo-v2.wav` | 180.00 s | 48 kHz stereo 16-bit, `CLAUDIO_VOLUME=1.0 --seed 1234`, peak −6.24 dBFS, RMS −23.3 dBFS |
 | `demo-v2.mp3` | 180.02 s | 192 kbit/s CBR (ffmpeg/libmp3lame) |
 | `focus-loop-v2.wav` | 60.37 s | steady medium activity, no failures, `--seed 2024` |
 | `focus-loop-v2.mp3` | 60.41 s | 192 kbit/s CBR |
@@ -501,9 +501,9 @@ carried the information well but scored badly on pleasantness.
 | C1 | Thread-safety of new state under live ingress | **PASS** (after fix) | §5. 6 concurrent ingress threads × 12 s against a render loop: 0 errors, 0 non-finite blocks, 0 over-unity samples, pool peak 10 (cap 10+6), pending ≤ 64 |
 | C2 | Freeverb state growth / denormals over a long render | **PASS** | §6. 5-minute render: comb state max 0.028, smallest non-zero 2.8e−7, all buffers finite, per-30 s RMS flat within 2.4 dB, no growth in `_lp_zi` (10 keys) or `_note_refractory` (≤15 = pool size) |
 | C3 | HTTP/UDP paths unchanged and still hardened | **PASS** | §5. `/health` 200, `POST /event` 200, unknown path 404, oversized `Content-Length` 413, malformed JSON absorbed, non-UTF-8 and 60 KB UDP datagrams absorbed |
-| C4 | `SONIFIER_THEME=geiger` byte-compatibility | **PASS** | §5. `cmp` clean against the checked-in v1 `demo.wav` |
-| D | Tests green + regressions added + theme pinned | **PASS** | 83 passed (74 pre-existing, 9 added). `tests/test_ambient.py` has an autouse fixture pinning `SONIFIER_THEME=ambient` |
-| E | Docs updated | **PASS** | README: theme description, `SONIFIER_VOLUME` calibration note, `SessionEnd` tail behaviour, focus-loop artifact, tests/tooling section. This file rewritten |
+| C4 | `CLAUDIO_THEME=geiger` byte-compatibility | **PASS** | §5. `cmp` clean against the checked-in v1 `demo.wav` |
+| D | Tests green + regressions added + theme pinned | **PASS** | 83 passed (74 pre-existing, 9 added). `tests/test_ambient.py` has an autouse fixture pinning `CLAUDIO_THEME=ambient` |
+| E | Docs updated | **PASS** | README: theme description, `CLAUDIO_VOLUME` calibration note, `SessionEnd` tail behaviour, focus-loop artifact, tests/tooling section. This file rewritten |
 
 ---
 
@@ -660,7 +660,7 @@ because at the new wet level no comb mode survives into the mix (worst
 in-mix tonal peak is 9.4 dB, and it is a bloom note, not a comb).
 
 **T3 — Master level calibration.** `AMBIENT_MASTER_HEADROOM_DB` −8 → **−11**,
-so that at `SONIFIER_VOLUME=1.0` the active state sits at −23 dBFS RMS /
+so that at `CLAUDIO_VOLUME=1.0` the active state sits at −23 dBFS RMS /
 −6 dBFS peak — a normal ambient master — and the daemon's 0.5 default is a
 sensible 6 dB-quieter background level. The soft clipper now barely engages
 (pre-tanh peak ≈ −8 dBFS) instead of compressing every peak by ~0.8 dB.
@@ -845,7 +845,7 @@ synthetic Poisson streams: 2/5/10/20/40 grains/s → 1.9/4.6/9.4/16/27).
 
 | Deviation | Verdict |
 |---|---|
-| `SONIFIER_CLICKS`/`CHIMES` remapped to the ambient layers; `SONIFIER_DRONE` accepted but unused | **Legitimate.** Brief §8 puts the pressure layer inside the ambient theme by default; the env contract is preserved and the README documents the mapping |
+| `CLAUDIO_CLICKS`/`CHIMES` remapped to the ambient layers; `CLAUDIO_DRONE` accepted but unused | **Legitimate.** Brief §8 puts the pressure layer inside the ambient theme by default; the env contract is preserved and the README documents the mapping |
 | `SessionEnd` fade shortened to 0.6 s | **Not legitimate** — fixed at the cause, see B11 |
 | Drop bus lowpassed at 3.2 kHz instead of the brief's 4.5 kHz "to help the centroid target" | **Superseded.** The centroid target was never in danger (0.02 % of energy above 5 kHz against a 10 % ceiling); the darkening was compensating for the missing bed. Left at 3.2 kHz since the rain now reads correctly, but the stated justification no longer holds |
 | `_apply_lp_stage` returns unfiltered audio if scipy is missing | **Accepted, narrow.** scipy is a hard dependency of the ambient theme (README and `install.sh` both say so) and geiger runs without it; this is a degraded-but-alive path, not a normal one |
@@ -854,8 +854,8 @@ synthetic Poisson streams: 2/5/10/20/40 grains/s → 1.9/4.6/9.4/16/27).
 
 ## 5. Compatibility, determinism, ingress
 
-- **Geiger byte-compatibility:** `SONIFIER_THEME=geiger SONIFIER_DRONE=1
-  python3 sonifier.py --render demo-session.jsonl out.wav --seed 7` is
+- **Geiger byte-compatibility:** `CLAUDIO_THEME=geiger CLAUDIO_DRONE=1
+  python3 main.py --render demo-session.jsonl out.wav --seed 7` is
   `cmp`-identical to the checked-in v1 `demo.wav` (md5 `bfa9d353…`). The one
   behavioural change introduced during verification (the 6 s render tail) is
   explicitly gated on the ambient theme so v1 output cannot move.
@@ -928,7 +928,7 @@ failures:
 
 ## 8. Listening guide — `demo-v2.mp3` (180.0 s)
 
-Rendered from `demo-session-v2.jsonl`, `SONIFIER_VOLUME=1.0 --seed 1234`.
+Rendered from `demo-session-v2.jsonl`, `CLAUDIO_VOLUME=1.0 --seed 1234`.
 Headphones recommended (see risk 2).
 
 | Time | What is happening | What you should hear |

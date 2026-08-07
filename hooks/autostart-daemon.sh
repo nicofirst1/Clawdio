@@ -8,12 +8,12 @@
 # health check with a short timeout) or backgrounded (the launch itself).
 set -u
 
-PORT="${SONIFIER_PORT:-9753}"
-HOST="${SONIFIER_HOST:-127.0.0.1}"
+PORT="${CLAUDIO_PORT:-9753}"
+HOST="${CLAUDIO_HOST:-127.0.0.1}"
 
 # Resolve the directory this script lives in, so it works regardless of cwd.
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd -P)"
-SONIFIER_PY="${SONIFIER_PY:-${SCRIPT_DIR}/../src/sonifier.py}"
+CLAUDIO_PY="${CLAUDIO_PY:-${SCRIPT_DIR}/../src/main.py}"
 
 health_url="http://${HOST}:${PORT}/health"
 
@@ -42,22 +42,22 @@ if is_up; then
     exit 0
 fi
 
-if [ ! -f "$SONIFIER_PY" ]; then
+if [ ! -f "$CLAUDIO_PY" ]; then
     # Daemon not installed alongside these hooks; nothing to launch.
     exit 0
 fi
 
-LOG_DIR="${SONIFIER_LOG_DIR:-${TMPDIR:-/tmp}}"
+LOG_DIR="${CLAUDIO_LOG_DIR:-${TMPDIR:-/tmp}}"
 LOG_FILE="${LOG_DIR}/sonifier.log"
 # Full DEBUG firehose (rotating) for post-mortem; console stays INFO in LOG_FILE.
-export SONIFIER_LOG_FILE="${SONIFIER_LOG_FILE:-${LOG_DIR}/sonifier.debug.log}"
+export CLAUDIO_LOG_FILE="${CLAUDIO_LOG_FILE:-${LOG_DIR}/sonifier.debug.log}"
 
 # Prefer the repo's venv python (has numpy/scipy/sounddevice) over whatever
-# python3 is on the hook's PATH; SONIFIER_PYTHON overrides both.
+# python3 is on the hook's PATH; CLAUDIO_PYTHON overrides both.
 REPO_VENV_PY="${SCRIPT_DIR}/../.venv/bin/python"
-PYTHON="${SONIFIER_PYTHON:-$([ -x "$REPO_VENV_PY" ] && printf '%s' "$REPO_VENV_PY" || printf '%s' python3)}"
+PYTHON="${CLAUDIO_PYTHON:-$([ -x "$REPO_VENV_PY" ] && printf '%s' "$REPO_VENV_PY" || printf '%s' python3)}"
 
-nohup "$PYTHON" "$SONIFIER_PY" </dev/null >>"$LOG_FILE" 2>&1 &
+nohup "$PYTHON" "$CLAUDIO_PY" </dev/null >>"$LOG_FILE" 2>&1 &
 disown 2>/dev/null || true
 
 exit 0

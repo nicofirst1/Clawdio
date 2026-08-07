@@ -15,7 +15,7 @@ The file's basename (minus `.json`) is the pack name. If the same name exists in
 
 Any one of:
 
-- `SONIFIER_THEME_PACK=dusk`
+- `CLAUDIO_THEME_PACK=dusk`
 - `theme_pack: "dusk"` in the config file
 - the web panel's theme-pack dropdown
 
@@ -91,5 +91,5 @@ Exact values and bounds live in `PACK_SCHEMA` (`src/themes.py`); defaults live i
 Render a deterministic clip and attach it, or the pack JSON alone, to the [theme pack issue template](../../../issues/new?template=theme-pack.yml):
 
 ```bash
-SONIFIER_THEME_PACK=yourpack python3 src/sonifier.py --render demos/demo-session-v2.jsonl clip.wav --seed 7
+CLAUDIO_THEME_PACK=yourpack python3 src/main.py --render demos/demo-session-v2.jsonl clip.wav --seed 7
 ```
