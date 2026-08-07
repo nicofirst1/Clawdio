@@ -12,7 +12,7 @@ from classify import SESSION_EXPIRY_S, SUBAGENT_PRESENCE_DECAY_S  # noqa: E402
 def test_pretooluse_read_detail_is_basename():
     rec = event_record({"hook_event_name": "PreToolUse", "tool_name": "Read",
                          "tool_input": {"file_path": "/repo/src/config.py"}})
-    assert rec == {"kind": "read", "label": "Read", "detail": "config.py"}
+    assert rec == {"kind": "read", "label": "Read", "detail": "config.py", "session": ""}
 
 
 def test_pretooluse_bash_exec_detail_is_command():
@@ -37,7 +37,18 @@ def test_skipped_events_return_none():
 
 def test_posttooluse_failure():
     rec = event_record({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"})
-    assert rec == {"kind": "fail", "label": "Bash", "detail": "failed"}
+    assert rec == {"kind": "fail", "label": "Bash", "detail": "failed", "session": ""}
+
+
+def test_event_record_session_is_first_six_chars():
+    rec = event_record({"hook_event_name": "PreToolUse", "tool_name": "Read",
+                         "tool_input": {}, "session_id": "sessionABCDEF"})
+    assert rec["session"] == "sessio"
+
+
+def test_event_record_no_session_id_is_empty_string():
+    rec = event_record({"hook_event_name": "Stop"})
+    assert rec["session"] == ""
 
 
 def test_static_kind_mappings():
@@ -111,6 +122,22 @@ def test_session_presence_appears_and_retires():
     assert sessions[0]["n"] >= 1
     log.record({"hook_event_name": "SessionEnd", "session_id": "s1"})
     assert log.snapshot()["sessions"] == []
+
+
+def test_session_counts_track_per_hook_for_filtering():
+    log = EventLog()
+    log.record({"hook_event_name": "PreToolUse", "session_id": "s1"})
+    log.record({"hook_event_name": "PostToolUse", "session_id": "s1"})
+    log.record({"hook_event_name": "PostToolUse", "session_id": "s1"})
+    session = log.snapshot()["sessions"][0]
+    assert session["counts"] == {"PreToolUse": 1, "PostToolUse": 2}
+
+
+def test_agent_entries_have_no_counts_key():
+    log = EventLog()
+    log.record({"hook_event_name": "PreToolUse", "agent_id": "a1"})
+    agent = log.snapshot()["agents"][0]
+    assert "counts" not in agent
 
 
 def test_two_sessions_get_distinct_idx():

@@ -59,8 +59,10 @@ def _detail(tool_input) -> str:
 def event_record(ev) -> dict | None:
     """Map a raw hook event to a display record, or None to skip it.
 
-    Returned dict has {kind, label, detail}; id and t are stamped by
-    EventLog.record. kind drives the frontend's colour/icon.
+    Returned dict has {kind, label, detail, session}; id and t are stamped by
+    EventLog.record. kind drives the frontend's colour/icon. session is the
+    same first-6-chars shortening _live() uses for session ids, so the
+    frontend can match a row to its session chip.
     """
     if not isinstance(ev, dict):
         return None
@@ -69,18 +71,20 @@ def event_record(ev) -> dict | None:
         return None
     tool_name = ev.get("tool_name")
     tool_input = ev.get("tool_input")
+    sid = ev.get("session_id")
+    session = str(sid)[:6] if sid else ""
 
     if name == "PreToolUse":
         cls = classify(tool_name, tool_input)  # read/write/exec, or None for spawns
         kind = cls if cls is not None else "spawn"
         label = tool_name if isinstance(tool_name, str) and tool_name else kind
-        return {"kind": kind, "label": label, "detail": _detail(tool_input)}
+        return {"kind": kind, "label": label, "detail": _detail(tool_input), "session": session}
     if name == "PostToolUseFailure":
         label = tool_name if isinstance(tool_name, str) and tool_name else "fail"
-        return {"kind": "fail", "label": label, "detail": "failed"}
+        return {"kind": "fail", "label": label, "detail": "failed", "session": session}
     if name in _STATIC_KIND:
         kind, label = _STATIC_KIND[name]
-        return {"kind": kind, "label": label, "detail": ""}
+        return {"kind": kind, "label": label, "detail": "", "session": session}
     return None
 
 
@@ -98,22 +102,29 @@ class EventLog:
         self._next_session_idx = 0
         self._next_agent_idx = 0
 
-    def _touch(self, table, key, now, idx_attr):
+    def _touch(self, table, key, now, idx_attr, name):
         entry = table.get(key)
         if entry is None:
             idx = getattr(self, idx_attr)
             setattr(self, idx_attr, idx + 1)
-            entry = {"idx": idx, "n": 0, "last": now}
+            entry = {"idx": idx, "n": 0, "last": now, "counts": collections.Counter()}
             table[key] = entry
         entry["n"] += 1
         entry["last"] = now
+        entry["counts"][name] += 1
 
-    def _live(self, table, decay_s, now):
+    def _live(self, table, decay_s, now, with_counts=False):
         expired = [k for k, e in table.items() if now - e["last"] > decay_s]
         for k in expired:
             del table[k]
         survivors = sorted(table.items(), key=lambda kv: kv[1]["idx"])
-        return [{"id": str(k)[:6], "idx": e["idx"], "n": e["n"]} for k, e in survivors]
+        out = []
+        for k, e in survivors:
+            entry = {"id": str(k)[:6], "idx": e["idx"], "n": e["n"]}
+            if with_counts:
+                entry["counts"] = dict(e["counts"])
+            out.append(entry)
+        return out
 
     def record(self, ev, now=None) -> None:
         """Derive and store a record for ev (no-op if ev isn't worth logging).
@@ -138,14 +149,14 @@ class EventLog:
                 if sid:
                     self._sessions.pop(sid, None)
             elif sid:
-                self._touch(self._sessions, sid, now, "_next_session_idx")
+                self._touch(self._sessions, sid, now, "_next_session_idx", name)
 
             aid = ev.get("agent_id")
             if name == "SubagentStop":
                 if aid:
                     self._agents.pop(aid, None)
             elif aid:
-                self._touch(self._agents, aid, now, "_next_agent_idx")
+                self._touch(self._agents, aid, now, "_next_agent_idx", name)
 
             rec = event_record(ev)
             if rec is not None:
@@ -180,7 +191,7 @@ class EventLog:
                 "events": [r for r in self._buf if r["id"] > since_id],
                 "seq": self._seq,
                 "counts": dict(self._counts),
-                "sessions": self._live(self._sessions, SESSION_EXPIRY_S, now),
+                "sessions": self._live(self._sessions, SESSION_EXPIRY_S, now, with_counts=True),
                 "agents": self._live(self._agents, SUBAGENT_PRESENCE_DECAY_S, now),
             }
 
@@ -191,11 +202,14 @@ if __name__ == "__main__":
     assert event_record({"hook_event_name": "PostToolUse"}) is None  # success skipped
     assert event_record({"hook_event_name": "PreToolUse", "tool_name": "Read",
                          "tool_input": {"file_path": "/a/b/config.py"}}) == {
-        "kind": "read", "label": "Read", "detail": "config.py"}
+        "kind": "read", "label": "Read", "detail": "config.py", "session": ""}
     assert event_record({"hook_event_name": "PreToolUse", "tool_name": "Bash",
                          "tool_input": {"command": "pytest -q"}})["kind"] == "exec"
     assert event_record({"hook_event_name": "PostToolUseFailure", "tool_name": "Bash"}) == {
-        "kind": "fail", "label": "Bash", "detail": "failed"}
+        "kind": "fail", "label": "Bash", "detail": "failed", "session": ""}
+    # session is the first 6 chars of session_id, matching _live()'s shortening.
+    assert event_record({"hook_event_name": "PreToolUse", "session_id": "sessionABCDEF"}
+                         )["session"] == "sessio"
     for i in range(5):
         log.record({"hook_event_name": "Stop"})
     assert log.seq == 5
@@ -216,10 +230,18 @@ if __name__ == "__main__":
     log.record({"hook_event_name": "SessionEnd", "session_id": "s1"})
     assert not any(s["id"] == "s1"[:6] for s in log.snapshot()["sessions"])
 
+    # per-session hook counts, for the /viz bar graph session filter.
+    log.record({"hook_event_name": "PreToolUse", "session_id": "s3"})
+    log.record({"hook_event_name": "PostToolUse", "session_id": "s3"})
+    s3 = next(s for s in log.snapshot()["sessions"] if s["id"] == "s3"[:6])
+    assert s3["counts"] == {"PreToolUse": 1, "PostToolUse": 1}
+
     # agent presence: appears on any event carrying agent_id, gone after
-    # SubagentStop.
+    # SubagentStop. Agent entries stay lean -- no "counts" key exposed.
     log.record({"hook_event_name": "PreToolUse", "agent_id": "a1"})
-    assert any(a["id"] == "a1"[:6] for a in log.snapshot()["agents"])
+    agents = log.snapshot()["agents"]
+    assert any(a["id"] == "a1"[:6] for a in agents)
+    assert "counts" not in agents[0]
     log.record({"hook_event_name": "SubagentStop", "agent_id": "a1"})
     assert not any(a["id"] == "a1"[:6] for a in log.snapshot()["agents"])
 

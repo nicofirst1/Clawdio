@@ -10,6 +10,9 @@ const ICONS = { spawn: "✸", subagent: "✸", fail: "⚠", done: "✓", attenti
 const MAX_ROWS = 500;
 const POLL_MS = 700;
 const NEAR_BOTTOM_PX = 48;
+const LABEL_W_KEY = "viz-hook-label-w";
+const LABEL_W_MIN = 60;
+const LABEL_W_MAX = 320;
 
 // Fixed hook order so the bar graph layout is stable; unknown hooks append at the end.
 const HOOK_ORDER = [
@@ -25,12 +28,17 @@ const idxColor = (idx) => IDX_COLORS[idx % IDX_COLORS.length];
 let since = 0;
 const log = $("log");
 const barsEl = $("bars");
+const barsWrapEl = barsEl.parentElement; // .bars-track-wrap — hosts --hook-label-w + the resize handle
 
 let prevCounts = {};
 let prevSessionN = new Map();
 let prevAgentN = new Map();
 const hookOrder = [...HOOK_ORDER];
 const barEls = new Map(); // hook -> {row, fill, num}
+
+const rowBuf = []; // in-memory buffer of event records, capped at MAX_ROWS
+const selectedSessions = new Set(); // empty = "All"
+let lastRenderedId = 0; // highest event id currently rendered in #log
 
 function setStatus(ok, text) {
   const el = $("status");
@@ -43,9 +51,9 @@ function isNearBottom() {
   return log.scrollHeight - log.scrollTop - log.clientHeight < NEAR_BOTTOM_PX;
 }
 
-function appendRow(ev) {
+function buildRow(ev, noAnim) {
   const row = document.createElement("div");
-  row.className = `row kind-${ev.kind}`;
+  row.className = noAnim ? `row kind-${ev.kind} no-anim` : `row kind-${ev.kind}`;
 
   const time = document.createElement("span");
   time.className = "col-time";
@@ -55,6 +63,10 @@ function appendRow(ev) {
   icon.className = "col-icon";
   icon.textContent = ICONS[ev.kind] ?? "";
 
+  const sess = document.createElement("span");
+  sess.className = "col-session";
+  sess.textContent = ev.session ?? "";
+
   const label = document.createElement("span");
   label.className = "col-label";
   label.textContent = ev.label ?? "";
@@ -62,17 +74,63 @@ function appendRow(ev) {
   const detail = document.createElement("span");
   detail.className = "col-detail";
   detail.textContent = ev.detail ?? "";
+  detail.title = ev.detail ?? "";
 
-  row.append(time, icon, label, detail);
-  log.appendChild(row);
+  row.append(time, icon, sess, label, detail);
+  return row;
 }
 
-function render(events) {
-  if (!events.length) return;
+function passesFilter(ev) {
+  return selectedSessions.size ? ev.session && selectedSessions.has(ev.session) : true;
+}
+
+// Full rebuild — only on filter change (session chip / "All" click). Non-animated
+// so switching filters doesn't replay row-in on the whole log.
+function rebuildLog() {
   const stick = isNearBottom();
-  for (const ev of events) appendRow(ev);
-  while (log.childElementCount > MAX_ROWS) log.removeChild(log.firstChild);
+  const rows = rowBuf.filter(passesFilter);
+
+  log.textContent = "";
+  const frag = document.createDocumentFragment();
+  let maxId = 0;
+  for (const ev of rows) {
+    frag.appendChild(buildRow(ev, true));
+    if (ev.id > maxId) maxId = ev.id;
+  }
+  log.appendChild(frag);
+  lastRenderedId = maxId;
+
   if (stick) log.scrollTop = log.scrollHeight;
+}
+
+// Incremental append — every poll. Only appends genuinely new rows, so row-in
+// only animates the new arrivals instead of re-running on the whole log.
+function appendNewRows() {
+  const stick = isNearBottom();
+  const newRows = rowBuf.filter((ev) => ev.id > lastRenderedId && passesFilter(ev));
+
+  if (newRows.length) {
+    const frag = document.createDocumentFragment();
+    let maxId = lastRenderedId;
+    for (const ev of newRows) {
+      frag.appendChild(buildRow(ev, false));
+      if (ev.id > maxId) maxId = ev.id;
+    }
+    log.appendChild(frag);
+    lastRenderedId = maxId;
+  }
+
+  // Keep the DOM in sync with rowBuf's cap.
+  const cap = selectedSessions.size ? rowBuf.filter(passesFilter).length : rowBuf.length;
+  while (log.children.length > cap) log.removeChild(log.firstChild);
+
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+
+function bufferEvents(events) {
+  if (!events.length) return;
+  rowBuf.push(...events);
+  if (rowBuf.length > MAX_ROWS) rowBuf.splice(0, rowBuf.length - MAX_ROWS);
 }
 
 function flash(el) {
@@ -105,6 +163,20 @@ function barRow(hook) {
   return { row, fill, num };
 }
 
+// Sums the per-hook counts of the selected sessions; falls back to the global
+// counts when no session filter is active.
+function filteredCounts(data) {
+  if (!selectedSessions.size) return data.counts ?? {};
+  const total = {};
+  for (const s of data.sessions ?? []) {
+    if (!selectedSessions.has(s.id)) continue;
+    for (const [hook, n] of Object.entries(s.counts ?? {})) {
+      total[hook] = (total[hook] ?? 0) + n;
+    }
+  }
+  return total;
+}
+
 function renderCounts(counts) {
   for (const hook of Object.keys(counts)) {
     if (!hookOrder.includes(hook)) hookOrder.push(hook);
@@ -131,6 +203,77 @@ function renderCounts(counts) {
 
 function chipKey(idx, id) {
   return `${idx}:${id}`;
+}
+
+function toggleSession(id) {
+  if (selectedSessions.has(id)) selectedSessions.delete(id);
+  else selectedSessions.add(id);
+  rebuildLog();
+}
+
+function selectAll() {
+  selectedSessions.clear();
+  rebuildLog();
+}
+
+function renderSessionChips(items, prevN) {
+  const container = $("sessions");
+  const seen = new Set();
+  const nextN = new Map();
+
+  // Drop selections for sessions that decayed out of the live list.
+  const liveIds = new Set(items.map((s) => s.id));
+  for (const id of [...selectedSessions]) {
+    if (!liveIds.has(id)) selectedSessions.delete(id);
+  }
+
+  let allChip = container.querySelector('[data-key="__all__"]');
+  if (!allChip) {
+    allChip = document.createElement("button");
+    allChip.type = "button";
+    allChip.className = "chip chip-all";
+    allChip.dataset.key = "__all__";
+    allChip.textContent = "All";
+    allChip.addEventListener("click", selectAll);
+    container.appendChild(allChip);
+  }
+  allChip.classList.toggle("selected", selectedSessions.size === 0);
+
+  for (const item of items) {
+    const key = chipKey(item.idx, item.id);
+    seen.add(key);
+    nextN.set(key, item.n);
+
+    let chip = container.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (!chip) {
+      chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.dataset.key = key;
+      chip.style.setProperty("--chip-color", idxColor(item.idx));
+      chip.addEventListener("click", () => toggleSession(item.id));
+      container.appendChild(chip);
+    }
+    chip.classList.remove("fading");
+    chip.classList.toggle("selected", selectedSessions.has(item.id));
+    chip.textContent = `S${item.idx} ${item.id}`;
+    chip.title = `${item.id} (n=${item.n})`;
+
+    const prev = prevN.get(key);
+    if (prev !== undefined && item.n > prev) flash(chip);
+  }
+
+  // Remove chips for sessions that dropped out of the live list.
+  for (const chip of [...container.children]) {
+    const key = chip.dataset.key;
+    if (key !== "__all__" && !seen.has(key)) {
+      chip.classList.add("fading");
+      setTimeout(() => chip.remove(), 300);
+    }
+  }
+
+  $("sessions-count").textContent = items.length;
+  return nextN;
 }
 
 function renderPresence(containerId, countId, items, prevN, small) {
@@ -171,6 +314,45 @@ function renderPresence(containerId, countId, items, prevN, small) {
   return nextN;
 }
 
+// ---- resizable hook-label column ----
+function initLabelResize() {
+  const saved = Number(localStorage.getItem(LABEL_W_KEY));
+  if (saved) barsWrapEl.style.setProperty("--hook-label-w", `${clampLabelW(saved)}px`);
+
+  const handle = $("bars-resize");
+  if (!handle) return;
+
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  const currentW = () => {
+    const px = getComputedStyle(barsWrapEl).getPropertyValue("--hook-label-w").trim();
+    return parseFloat(px) || 120;
+  };
+
+  handle.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    startX = e.clientX;
+    startW = currentW();
+    handle.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const w = clampLabelW(startW + (e.clientX - startX));
+    barsWrapEl.style.setProperty("--hook-label-w", `${w}px`);
+  });
+  handle.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = false;
+    localStorage.setItem(LABEL_W_KEY, String(currentW()));
+  });
+}
+
+function clampLabelW(w) {
+  return Math.min(LABEL_W_MAX, Math.max(LABEL_W_MIN, Math.round(w)));
+}
+
 async function poll() {
   try {
     const res = await fetch(`/events?since=${since}`);
@@ -178,10 +360,11 @@ async function poll() {
     const data = await res.json();
     const events = data.events ?? [];
     if (events.length) since = events[events.length - 1].id;
-    render(events);
+    bufferEvents(events);
+    appendNewRows();
 
-    renderCounts(data.counts ?? {});
-    prevSessionN = renderPresence("sessions", "sessions-count", data.sessions ?? [], prevSessionN, false);
+    renderCounts(filteredCounts(data));
+    prevSessionN = renderSessionChips(data.sessions ?? [], prevSessionN);
     prevAgentN = renderPresence("agents", "agents-count", data.agents ?? [], prevAgentN, true);
 
     setStatus(true, "online");
@@ -190,5 +373,6 @@ async function poll() {
   }
 }
 
+initLabelResize();
 poll();
 setInterval(poll, POLL_MS);
