@@ -14,6 +14,7 @@ import threading
 import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from geiger import GeigerTheme, render_block
 from ambient import AmbientTheme
 from ambient_layers import AMBIENT_CONFIG
 import themes
+from event_log import EventLog
 from logging_setup import get_logger
 
 log = get_logger("sonifier")
@@ -148,8 +150,10 @@ def _write_wav(path, stereo_f32, sr):
 _WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "web")
 _STATIC_FILES = {
     "/": ("index.html", "text/html; charset=utf-8"),
+    "/viz": ("viz.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/viz.js": ("viz.js", "application/javascript; charset=utf-8"),
 }
 
 # How each live config key maps onto theme-state attributes. This table is
@@ -193,6 +197,7 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
     state: GeigerTheme | AmbientTheme | None = None  # set by server factory
     boot_cfg: dict = None  # config the daemon started with (restart detection)
     restart_event: threading.Event = None  # set by POST /restart
+    event_log: EventLog | None = None  # set by server factory; feeds GET /events
     protocol_version = "HTTP/1.0"  # no keep-alive: don't pin a thread per client
     timeout = HTTP_READ_TIMEOUT  # bound a slow/stalled client's socket reads
 
@@ -281,6 +286,8 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
         try:
             ev = json.loads(body.decode("utf-8"))
             self.state.handle_event(ev)
+            if self.event_log is not None:
+                self.event_log.record(ev)
         except Exception:
             pass
         self.send_response(200)
@@ -309,6 +316,21 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
                 "version": VERSION,
             })
             return
+        if urlsplit(self.path).path == "/events":
+            if not self._is_local():
+                self._send_json({"error": "events is loopback-only"}, 403)
+                return
+            qs = parse_qs(urlsplit(self.path).query)
+            try:
+                since = int(qs.get("since", ["0"])[0])
+            except (TypeError, ValueError):
+                since = 0
+            log_ = self.event_log
+            self._send_json({
+                "events": log_.since(since) if log_ is not None else [],
+                "seq": log_.seq if log_ is not None else 0,
+            })
+            return
         static = _STATIC_FILES.get(self.path)
         if static is not None and self._is_local():
             fname, ctype = static
@@ -329,17 +351,18 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
 
-def _make_http_server(state, port, boot_cfg=None, restart_event=None):
+def _make_http_server(state, port, boot_cfg=None, restart_event=None, event_log=None):
     handler_cls = type("BoundHandler", (_EventHTTPHandler,), {
         "state": state,
         "boot_cfg": boot_cfg if boot_cfg is not None else load_config(),
         "restart_event": restart_event if restart_event is not None else threading.Event(),
+        "event_log": event_log,
     })
     httpd = ThreadingHTTPServer(("0.0.0.0", port), handler_cls)
     return httpd
 
 
-def _udp_recv_loop(state, port, stop_event):
+def _udp_recv_loop(state, port, stop_event, event_log=None):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         sock.bind(("0.0.0.0", port))
@@ -358,6 +381,8 @@ def _udp_recv_loop(state, port, stop_event):
         try:
             ev = json.loads(data.decode("utf-8"))
             state.handle_event(ev)
+            if event_log is not None:
+                event_log.record(ev)
         except Exception:
             log.debug("dropped malformed UDP datagram (%d bytes)", len(data), exc_info=True)
             continue
@@ -409,6 +434,7 @@ def run_live():
     if os.path.exists(config_path()):
         log.info("loaded config file: %s (overrides env vars)", config_path())
     state = _build_theme_state(cfg, seed=int(time.time()))
+    event_log = EventLog()
 
     stop_event = threading.Event()
     restart_event = threading.Event()
@@ -422,7 +448,9 @@ def run_live():
             outdata[:] = np.zeros((frames, 2), dtype=np.float32)
 
     try:
-        httpd = _make_http_server(state, cfg["port"], boot_cfg=cfg, restart_event=restart_event)
+        httpd = _make_http_server(
+            state, cfg["port"], boot_cfg=cfg, restart_event=restart_event, event_log=event_log
+        )
     except OSError as exc:
         log.error(
             "cannot listen on port %s: %s\n"
@@ -435,7 +463,7 @@ def run_live():
         sys.exit(1)
     http_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     udp_thread = threading.Thread(
-        target=_udp_recv_loop, args=(state, cfg["port"], stop_event), daemon=True
+        target=_udp_recv_loop, args=(state, cfg["port"], stop_event, event_log), daemon=True
     )
     http_thread.start()
     udp_thread.start()
