@@ -326,10 +326,10 @@ class _EventHTTPHandler(BaseHTTPRequestHandler):
             except (TypeError, ValueError):
                 since = 0
             log_ = self.event_log
-            self._send_json({
-                "events": log_.since(since) if log_ is not None else [],
-                "seq": log_.seq if log_ is not None else 0,
-            })
+            if log_ is not None:
+                self._send_json(log_.snapshot(since))
+            else:
+                self._send_json({"events": [], "seq": 0, "counts": {}, "sessions": [], "agents": []})
             return
         static = _STATIC_FILES.get(self.path)
         if static is not None and self._is_local():

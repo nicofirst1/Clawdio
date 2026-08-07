@@ -18,7 +18,7 @@ import os
 import threading
 import time
 
-from classify import classify
+from classify import classify, SESSION_EXPIRY_S, SUBAGENT_PRESENCE_DECAY_S
 
 # hook_event_name -> the record we log for it. PostToolUse (success) and
 # ContextPressure are intentionally absent: they make no distinct sound, so
@@ -92,17 +92,67 @@ class EventLog:
         self._buf: collections.deque = collections.deque(maxlen=capacity)
         self._seq = 0
         self._lock = threading.Lock()
+        self._counts = collections.Counter()  # raw hook_event_name -> cumulative total
+        self._sessions = {}  # session_id -> {"idx": int, "n": int, "last": float}
+        self._agents = {}    # agent_id   -> {"idx": int, "n": int, "last": float}
+        self._next_session_idx = 0
+        self._next_agent_idx = 0
 
-    def record(self, ev) -> None:
-        """Derive and store a record for ev (no-op if ev isn't worth logging)."""
-        rec = event_record(ev)
-        if rec is None:
+    def _touch(self, table, key, now, idx_attr):
+        entry = table.get(key)
+        if entry is None:
+            idx = getattr(self, idx_attr)
+            setattr(self, idx_attr, idx + 1)
+            entry = {"idx": idx, "n": 0, "last": now}
+            table[key] = entry
+        entry["n"] += 1
+        entry["last"] = now
+
+    def _live(self, table, decay_s, now):
+        expired = [k for k, e in table.items() if now - e["last"] > decay_s]
+        for k in expired:
+            del table[k]
+        survivors = sorted(table.items(), key=lambda kv: kv[1]["idx"])
+        return [{"id": str(k)[:6], "idx": e["idx"], "n": e["n"]} for k, e in survivors]
+
+    def record(self, ev, now=None) -> None:
+        """Derive and store a record for ev (no-op if ev isn't worth logging).
+
+        Counting and session/agent presence tracking happen for EVERY valid
+        event (including PostToolUse/ContextPressure, which never get a
+        curated row) -- that's the raw data the /viz bar graph and live
+        session/agent view need.
+        """
+        if not isinstance(ev, dict):
             return
+        name = ev.get("hook_event_name")
+        if not isinstance(name, str) or not name:
+            return
+        now = time.time() if now is None else now
+
         with self._lock:
-            self._seq += 1
-            rec["id"] = self._seq
-            rec["t"] = time.time()
-            self._buf.append(rec)
+            self._counts[name] += 1
+
+            sid = ev.get("session_id")
+            if name == "SessionEnd":
+                if sid:
+                    self._sessions.pop(sid, None)
+            elif sid:
+                self._touch(self._sessions, sid, now, "_next_session_idx")
+
+            aid = ev.get("agent_id")
+            if name == "SubagentStop":
+                if aid:
+                    self._agents.pop(aid, None)
+            elif aid:
+                self._touch(self._agents, aid, now, "_next_agent_idx")
+
+            rec = event_record(ev)
+            if rec is not None:
+                self._seq += 1
+                rec["id"] = self._seq
+                rec["t"] = now
+                self._buf.append(rec)
 
     @property
     def seq(self) -> int:
@@ -113,6 +163,26 @@ class EventLog:
         """Records with id > since_id, oldest first."""
         with self._lock:
             return [r for r in self._buf if r["id"] > since_id]
+
+    def snapshot(self, since_id: int = 0, now=None) -> dict:
+        """Everything the /viz page needs in one call: new curated rows since
+        since_id, the monotonic seq, cumulative raw counts per hook name, and
+        the currently-live sessions/subagents (per the same presence windows
+        the audio uses, SESSION_EXPIRY_S / SUBAGENT_PRESENCE_DECAY_S).
+
+        Side effect: _live() evicts sessions/agents whose window has lapsed, so
+        a snapshot prunes as it reads. Correct because `now` is a monotonic wall
+        clock -- an expired id can't reappear -- but don't call with an out-of-
+        order past `now` expecting evicted entries back."""
+        now = time.time() if now is None else now
+        with self._lock:
+            return {
+                "events": [r for r in self._buf if r["id"] > since_id],
+                "seq": self._seq,
+                "counts": dict(self._counts),
+                "sessions": self._live(self._sessions, SESSION_EXPIRY_S, now),
+                "agents": self._live(self._agents, SUBAGENT_PRESENCE_DECAY_S, now),
+            }
 
 
 if __name__ == "__main__":
@@ -131,4 +201,33 @@ if __name__ == "__main__":
     assert log.seq == 5
     assert [r["id"] for r in log.since(0)] == [3, 4, 5]  # capacity 3 dropped 1,2
     assert log.since(4) == log.since(4) and [r["id"] for r in log.since(4)] == [5]
+
+    # raw counts include PostToolUse/ContextPressure (no row) as well as
+    # curated events (row); seq only moves for curated rows.
+    seq_before = log.seq
+    log.record({"hook_event_name": "PostToolUse"})
+    assert log.seq == seq_before  # no row
+    assert log.snapshot()["counts"]["PostToolUse"] == 1
+
+    # session presence: appears on SessionStart, gone after SessionEnd.
+    log.record({"hook_event_name": "SessionStart", "session_id": "s1"})
+    snap = log.snapshot()
+    assert any(s["id"] == "s1"[:6] for s in snap["sessions"])
+    log.record({"hook_event_name": "SessionEnd", "session_id": "s1"})
+    assert not any(s["id"] == "s1"[:6] for s in log.snapshot()["sessions"])
+
+    # agent presence: appears on any event carrying agent_id, gone after
+    # SubagentStop.
+    log.record({"hook_event_name": "PreToolUse", "agent_id": "a1"})
+    assert any(a["id"] == "a1"[:6] for a in log.snapshot()["agents"])
+    log.record({"hook_event_name": "SubagentStop", "agent_id": "a1"})
+    assert not any(a["id"] == "a1"[:6] for a in log.snapshot()["agents"])
+
+    # decay via injectable now: present at t0, gone after SESSION_EXPIRY_S.
+    log.record({"hook_event_name": "SessionStart", "session_id": "s2"}, now=0.0)
+    assert any(s["id"] == "s2"[:6] for s in log.snapshot(now=0.0)["sessions"])
+    assert not any(
+        s["id"] == "s2"[:6]
+        for s in log.snapshot(now=SESSION_EXPIRY_S + 1)["sessions"]
+    )
     print("event_log self-check ok")

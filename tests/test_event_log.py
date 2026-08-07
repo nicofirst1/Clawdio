@@ -6,6 +6,7 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 from event_log import EventLog, event_record  # noqa: E402
+from classify import SESSION_EXPIRY_S, SUBAGENT_PRESENCE_DECAY_S  # noqa: E402
 
 
 def test_pretooluse_read_detail_is_basename():
@@ -70,3 +71,89 @@ def test_eventlog_capacity_drops_oldest():
         log.record({"hook_event_name": "Stop"})
     assert [r["id"] for r in log.since(0)] == [3, 4, 5]
     assert [r["id"] for r in log.since(4)] == [5]
+
+
+def test_counts_tally_all_hooks_including_row_less_ones():
+    log = EventLog()
+    log.record({"hook_event_name": "PostToolUse"})  # no curated row
+    log.record({"hook_event_name": "PreToolUse", "tool_name": "Read",
+                "tool_input": {"file_path": "/a"}})  # curated row
+    snap = log.snapshot()
+    assert snap["counts"]["PostToolUse"] == 1
+    assert snap["counts"]["PreToolUse"] == 1
+    assert log.seq == 1  # only the PreToolUse produced a row
+
+
+def test_skipped_event_still_bumps_counts_not_seq():
+    log = EventLog()
+    log.record({"hook_event_name": "ContextPressure"})
+    assert log.snapshot()["counts"]["ContextPressure"] == 1
+    assert log.seq == 0
+
+
+def test_snapshot_shape():
+    log = EventLog()
+    snap = log.snapshot()
+    assert set(snap.keys()) == {"events", "seq", "counts", "sessions", "agents"}
+    assert isinstance(snap["events"], list)
+    assert isinstance(snap["seq"], int)
+    assert isinstance(snap["counts"], dict)
+    assert isinstance(snap["sessions"], list)
+    assert isinstance(snap["agents"], list)
+
+
+def test_session_presence_appears_and_retires():
+    log = EventLog()
+    log.record({"hook_event_name": "SessionStart", "session_id": "s1"})
+    sessions = log.snapshot()["sessions"]
+    assert len(sessions) == 1
+    assert sessions[0]["id"] == "s1"[:6]
+    assert sessions[0]["n"] >= 1
+    log.record({"hook_event_name": "SessionEnd", "session_id": "s1"})
+    assert log.snapshot()["sessions"] == []
+
+
+def test_two_sessions_get_distinct_idx():
+    log = EventLog()
+    log.record({"hook_event_name": "SessionStart", "session_id": "s1"})
+    log.record({"hook_event_name": "SessionStart", "session_id": "s2"})
+    sessions = {s["id"]: s["idx"] for s in log.snapshot()["sessions"]}
+    assert sessions["s1"[:6]] != sessions["s2"[:6]]
+
+
+def test_agent_presence_appears_and_retires():
+    log = EventLog()
+    log.record({"hook_event_name": "PreToolUse", "agent_id": "a1"})
+    agents = log.snapshot()["agents"]
+    assert len(agents) == 1
+    assert agents[0]["id"] == "a1"[:6]
+    log.record({"hook_event_name": "SubagentStop", "agent_id": "a1"})
+    assert log.snapshot()["agents"] == []
+
+
+def test_agent_event_with_session_id_keeps_session_alive():
+    log = EventLog()
+    log.record({"hook_event_name": "PreToolUse", "session_id": "s1", "agent_id": "a1"})
+    snap = log.snapshot()
+    assert any(s["id"] == "s1"[:6] for s in snap["sessions"])
+    assert any(a["id"] == "a1"[:6] for a in snap["agents"])
+
+
+def test_session_decays_via_injectable_now():
+    log = EventLog()
+    log.record({"hook_event_name": "SessionStart", "session_id": "s1"}, now=0.0)
+    assert any(s["id"] == "s1"[:6] for s in log.snapshot(now=0.0)["sessions"])
+    assert not any(
+        s["id"] == "s1"[:6]
+        for s in log.snapshot(now=SESSION_EXPIRY_S + 1)["sessions"]
+    )
+
+
+def test_agent_decays_via_injectable_now():
+    log = EventLog()
+    log.record({"hook_event_name": "PreToolUse", "agent_id": "a1"}, now=0.0)
+    assert any(a["id"] == "a1"[:6] for a in log.snapshot(now=0.0)["agents"])
+    assert not any(
+        a["id"] == "a1"[:6]
+        for a in log.snapshot(now=SUBAGENT_PRESENCE_DECAY_S + 1)["agents"]
+    )
